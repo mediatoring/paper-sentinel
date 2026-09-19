@@ -1,0 +1,10 @@
+services:
+  paper-sentinel:
+    build: .
+    ports:
+      - "127.0.0.1:5792:5792"
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

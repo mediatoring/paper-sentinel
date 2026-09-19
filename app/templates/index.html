@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Paper Sentinel</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Paper Sentinel</h1>
+      <p>Local AI-curated arXiv research radar</p>
+    </div>
+    <div class="actions">
+      <button id="scanBtn" class="primary">Scan now</button>
+      <button id="settingsBtn">Settings</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="statusbar">
+      <span id="scanStatus">Status: —</span>
+      <span id="lastScan">Last scan: —</span>
+      <span><a href="/feed.xml" target="_blank">RSS feed</a></span>
+    </section>
+
+    <section id="emptyState" class="empty hidden">
+      No matching papers stored yet. Configure your radar and run the first scan.
+    </section>
+
+    <section id="papers" class="paper-grid"></section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form id="settingsForm" method="dialog">
+      <div class="dialog-head">
+        <div>
+          <h2>Research radar</h2>
+          <p>Select arXiv categories, research tags, schedule, summary length and notifications.</p>
+        </div>
+        <button type="button" id="closeSettings" class="icon">×</button>
+      </div>
+
+      <fieldset>
+        <legend>arXiv categories</legend>
+        <div class="chips">
+          {% for code, label in categories %}
+          <label class="chip"><input type="checkbox" name="categories" value="{{ code }}"><span>{{ code }} · {{ label }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Research tags</legend>
+        <div class="chips" id="suggestedTags">
+          {% for tag in suggested_tags %}
+          <label class="chip"><input type="checkbox" name="suggested_tags" value="{{ tag }}"><span>{{ tag }}</span></label>
+          {% endfor %}
+        </div>
+        <label class="field">Custom tags
+          <input id="customTags" type="text" placeholder="e.g. brand learnability, entity memorization">
+          <small>Comma-separated. Tags are matched against title + abstract before the LLM is used.</small>
+        </label>
+        <label class="field">Match mode
+          <select id="matchMode"><option value="any">Any selected tag</option><option value="all">All selected tags</option></select>
+        </label>
+      </fieldset>
+
+      <div class="two-col">
+        <fieldset>
+          <legend>Schedule & display</legend>
+          <label class="field">Scan interval
+            <select id="intervalMinutes">
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every hour</option>
+              <option value="180">Every 3 hours</option>
+              <option value="360">Every 6 hours</option>
+              <option value="720">Every 12 hours</option>
+              <option value="1440">Daily</option>
+            </select>
+          </label>
+          <label class="field">Maximum arXiv results per scan
+            <input id="maxResults" type="number" min="10" max="300" step="10">
+          </label>
+          <label class="field">Summary length
+            <select id="summaryLength"><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select>
+          </label>
+          <label class="field">View
+            <select id="viewMode"><option value="cards">Cards</option><option value="compact">Compact</option></select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Local LLM</legend>
+          <label class="toggle"><input id="llmEnabled" type="checkbox"><span>Enable local AI summaries</span></label>
+          <label class="field">OpenAI-compatible base URL
+            <input id="llmBaseUrl" type="url" placeholder="http://127.0.0.1:1234/v1">
+          </label>
+          <label class="field">Model name
+            <input id="llmModel" type="text" placeholder="local-model">
+          </label>
+          <label class="field">API key (optional)
+            <input id="llmApiKey" type="password" autocomplete="off">
+          </label>
+          <label class="field">Temperature
+            <input id="llmTemperature" type="number" min="0" max="2" step="0.1">
+          </label>
+          <small>LM Studio default: http://127.0.0.1:1234/v1. Ollama OpenAI-compatible: http://127.0.0.1:11434/v1.</small>
+        </fieldset>
+      </div>
+
+      <fieldset>
+        <legend>Notifications</legend>
+        <label class="toggle"><input id="browserNotifications" type="checkbox"><span>Browser notifications while Paper Sentinel is open</span></label>
+        <label class="toggle"><input id="emailEnabled" type="checkbox"><span>Email digest via SMTP</span></label>
+        <div id="smtpFields" class="three-col">
+          <label class="field">SMTP host<input id="smtpHost" type="text"></label>
+          <label class="field">Port<input id="smtpPort" type="number"></label>
+          <label class="field">Username<input id="smtpUsername" type="text"></label>
+          <label class="field">Password<input id="smtpPassword" type="password"></label>
+          <label class="field">From<input id="smtpFrom" type="email"></label>
+          <label class="field">To<input id="smtpTo" type="email"></label>
+        </div>
+        <label class="toggle"><input id="smtpStarttls" type="checkbox"><span>STARTTLS</span></label>
+        <label class="toggle"><input id="webhookEnabled" type="checkbox"><span>Generic webhook</span></label>
+        <label class="field">Webhook URL<input id="webhookUrl" type="url" placeholder="https://..."></label>
+      </fieldset>
+
+      <div class="dialog-actions">
+        <button type="button" id="cancelSettings">Cancel</button>
+        <button type="submit" class="primary">Save settings</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

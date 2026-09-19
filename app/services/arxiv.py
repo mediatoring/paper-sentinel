@@ -20,7 +20,7 @@ HEADERS = {"User-Agent": USER_AGENT, "Accept": "application/atom+xml, applicatio
 # limit is exceeded it answers with an empty 406 or 429 (and later times out).
 MIN_REQUEST_INTERVAL = 3.0
 RETRY_STATUSES = {406, 429, 500, 502, 503, 504}
-MAX_ATTEMPTS = 4
+MAX_ATTEMPTS = 5
 
 _throttle_lock = threading.Lock()
 _last_request_at = 0.0

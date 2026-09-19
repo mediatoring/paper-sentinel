@@ -48,6 +48,7 @@ def scan_once() -> dict[str, Any]:
         db.set_state("last_scan_new", str(len(new_items)))
         db.set_state("last_scan_matched", str(matched_count))
         db.set_state("last_scan_scanned", str(len(papers)))
+        db.set_state("last_error", "")
         db.set_state("scan_status", "idle")
         return {"status": "ok", "new": len(new_items), "matched": matched_count, "scanned": len(papers)}
     except Exception as exc:

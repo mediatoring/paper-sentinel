@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -15,7 +16,19 @@ from app.scheduler import reschedule, start as start_scheduler, stop as stop_sch
 from app.services.scanner import scan_once
 
 BASE_DIR = Path(__file__).resolve().parent
-app = FastAPI(title="Paper Sentinel", version="0.1.0")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    db.init_db()
+    start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
+
+
+app = FastAPI(title="Paper Sentinel", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
@@ -44,17 +57,6 @@ class SettingsPayload(BaseModel):
     smtp_starttls: bool = True
     webhook_enabled: bool = False
     webhook_url: str = ""
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    db.init_db()
-    start_scheduler()
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    stop_scheduler()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -105,6 +107,8 @@ def status():
 
 @app.post("/api/scan")
 def scan(background_tasks: BackgroundTasks):
+    if db.get_state().get("scan_status") == "running":
+        return {"status": "busy"}
     background_tasks.add_task(scan_once)
     return {"status": "started"}
 

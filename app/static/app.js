@@ -68,12 +68,16 @@ async function loadPapers(){
 
 async function loadStatus(){
   const s=await fetch('/api/status').then(r=>r.json());
-  $('scanStatus').textContent=`Status: ${s.scan_status||'idle'}`;$('lastScan').textContent=`Last scan: ${s.last_scan?dateText(s.last_scan):'never'}`;
-  if(s.scan_status==='idle') await loadPapers();
+  const status=s.scan_status||'idle';
+  $('scanStatus').textContent=`Status: ${status}`;$('scanStatus').className=status==='error'?'status-error':'';
+  $('lastScan').textContent=`Last scan: ${s.last_scan?dateText(s.last_scan):'never'}`;
+  const err=$('scanError');err.textContent=status==='error'&&s.last_error?`Last error: ${s.last_error}`:'';err.classList.toggle('hidden',!err.textContent);
+  $('scanBtn').disabled=status==='running';
+  if(status!=='running') await loadPapers();
 }
 
 async function scanNow(){
-  $('scanBtn').disabled=true;await fetch('/api/scan',{method:'POST'});toast('Scan started');setTimeout(()=>{$('scanBtn').disabled=false;loadStatus()},1500);
+  $('scanBtn').disabled=true;const r=await fetch('/api/scan',{method:'POST'}).then(r=>r.json());toast(r.status==='busy'?'Scan already running':'Scan started');setTimeout(loadStatus,1500);
 }
 
 $('settingsBtn').addEventListener('click',async()=>{await loadSettings();$('settingsDialog').showModal();});

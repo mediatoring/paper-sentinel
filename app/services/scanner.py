@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from datetime import datetime, timezone
 from typing import Any
@@ -10,6 +11,7 @@ from app.services.llm import analyze_paper
 from app.services.matcher import match_paper
 from app.services.notifier import send_notifications
 
+log = logging.getLogger(__name__)
 _lock = threading.Lock()
 
 
@@ -49,8 +51,9 @@ def scan_once() -> dict[str, Any]:
         db.set_state("scan_status", "idle")
         return {"status": "ok", "new": len(new_items), "matched": matched_count, "scanned": len(papers)}
     except Exception as exc:
+        log.error("Scan failed: %s", exc)
         db.set_state("scan_status", "error")
         db.set_state("last_error", str(exc))
-        raise
+        return {"status": "error", "error": str(exc), "new": 0, "matched": 0, "scanned": 0}
     finally:
         _lock.release()

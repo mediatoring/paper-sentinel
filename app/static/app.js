@@ -52,20 +52,50 @@ function saveButton(id,saved){
 
 const THUMB_UP='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 10v11H3V10h4zm2 0l4.2-7.3a1.5 1.5 0 0 1 2.7 1l-1.2 5.3H20a2 2 0 0 1 2 2.4l-1.4 7a2 2 0 0 1-2 1.6H9V10z" fill="currentColor"/></svg>';
 const THUMB_DOWN='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M17 14V3h4v11h-4zm-2 0l-4.2 7.3a1.5 1.5 0 0 1-2.7-1l1.2-5.3H4a2 2 0 0 1-2-2.4l1.4-7A2 2 0 0 1 5.4 3H15v11z" fill="currentColor"/></svg>';
-function reactionBar(id,reaction){
+function reactionBar(id,reaction,compact=false){
   const up=reaction==='like',down=reaction==='dislike';
-  return `<div class="reactions" data-id="${esc(id)}">
+  return `<div class="reactions${compact?' compact':''}" data-id="${esc(id)}">
     <button type="button" class="react-btn like${up?' active':''}" data-reaction="like" aria-pressed="${up}" title="${up?'Remove like':'Like: useful for my research'}">${THUMB_UP}<span>${up?'Liked':'Like'}</span></button>
     <button type="button" class="react-btn dislike${down?' active':''}" data-reaction="dislike" aria-pressed="${down}" title="${down?'Remove not interested':'Not interested'}">${THUMB_DOWN}<span>${down?'Not interested':'Not interested'}</span></button>
   </div>`;
 }
 
+const LAYOUTS=['cards2','cards3','table'];
+function layout(){const v=settings?.view_mode;return LAYOUTS.includes(v)?v:'cards3';}
+function paperClasses(p,base){
+  return [base,p.saved?'is-saved':'',p.reaction==='like'?'is-liked':'',p.reaction==='dislike'?'is-disliked':''].filter(Boolean).join(' ');
+}
+function truncate(s,n){s=String(s||'');return s.length>n?s.slice(0,n-1).trimEnd()+'…':s;}
+
+function renderRow(p){
+  const authors=(p.authors||[]).slice(0,3).join(', ')+(p.authors?.length>3?' et al.':'');
+  const tags=(p.matched_tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('');
+  return `<tr class="${paperClasses(p,'row')}" data-id="${esc(p.arxiv_id)}">
+    <td class="col-date">${esc(dateText(p.published).split(',')[0])}</td>
+    <td class="col-title"><button type="button" class="row-toggle" aria-expanded="false" title="Show details">${esc(p.title)}</button><div class="row-sub">${esc(authors)} · ${esc((p.categories||[]).join(', '))}</div></td>
+    <td class="col-tags">${tags}</td>
+    <td class="col-summary">${esc(truncate(p.key_contribution||p.summary,160))}</td>
+    <td class="col-actions"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer" title="Open on arXiv">arXiv</a>${saveButton(p.arxiv_id,p.saved)}${reactionBar(p.arxiv_id,p.reaction)}</td>
+  </tr>
+  <tr class="row-details hidden" data-for="${esc(p.arxiv_id)}"><td colspan="5">
+    ${p.summary?`<p><span class="label">Summary.</span> ${esc(p.summary)}</p>`:''}
+    ${p.why_relevant?`<p><span class="label">Why it matters.</span> ${esc(p.why_relevant)}</p>`:''}
+    ${p.key_contribution?`<p><span class="label">Key contribution.</span> ${esc(p.key_contribution)}</p>`:''}
+    ${p.limitations?`<p><span class="label">Limitations / uncertainty.</span> ${esc(p.limitations)}</p>`:''}
+    ${p.related_to?`<p><span class="label">Related.</span> ${esc(p.related_to)}</p>`:''}
+    <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
+  </td></tr>`;
+}
+
+function renderTable(papers){
+  return `<table class="paper-table"><thead><tr><th>Date</th><th>Paper</th><th>Tags</th><th>Key contribution</th><th></th></tr></thead><tbody>${papers.map(renderRow).join('')}</tbody></table>`;
+}
+
 function renderPaper(p){
   const authors=(p.authors||[]).slice(0,4).join(', ')+(p.authors?.length>4?' et al.':'');
   const tags=(p.matched_tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('');
-  const cls=['paper',p.saved?'is-saved':'',p.reaction==='like'?'is-liked':'',p.reaction==='dislike'?'is-disliked':''].filter(Boolean).join(' ');
-  return `<article class="${cls}" data-id="${esc(p.arxiv_id)}">
-    ${saveButton(p.arxiv_id,p.saved)}
+  return `<article class="${paperClasses(p,'paper')}" data-id="${esc(p.arxiv_id)}">
+    <div class="card-actions">${reactionBar(p.arxiv_id,p.reaction,true)}${saveButton(p.arxiv_id,p.saved)}</div>
     <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
     <h3>${esc(p.title)}</h3><div class="meta">${esc(authors)}</div><div class="tags">${tags}</div>
     ${p.summary?`<p><span class="label">Summary.</span> ${esc(p.summary)}</p>`:''}
@@ -85,8 +115,10 @@ function updateCounts(c){
 async function loadPapers(){
   const view=currentView;
   const papers=await fetch(`/api/papers?limit=200&view=${view}`).then(r=>r.json());
-  $('papers').className='paper-grid '+((settings?.view_mode||'cards')==='compact'?'compact':'');
-  $('papers').innerHTML=papers.map(renderPaper).join('');
+  const mode=layout();
+  $('papers').className=mode==='table'?'paper-list':`paper-grid ${mode}`;
+  $('papers').innerHTML=mode==='table'?renderTable(papers):papers.map(renderPaper).join('');
+  document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
   const empty={all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked'};
   for(const [k,id] of Object.entries(empty)) $(id).classList.toggle('hidden',k!==view||papers.length!==0);
   if(view!=='all'){return;}
@@ -96,37 +128,62 @@ async function loadPapers(){
   lastKnownCount=papers.length;
 }
 
+function replaceCard(card,paper){
+  if(card.classList.contains('row')){
+    const details=card.nextElementSibling,wasOpen=details?.classList.contains('row-details')&&!details.classList.contains('hidden');
+    if(details?.classList.contains('row-details'))details.remove();
+    card.outerHTML=renderRow(paper);
+    if(wasOpen){const t=$('papers').querySelector(`.row[data-id="${CSS.escape(paper.arxiv_id)}"] .row-toggle`);if(t)toggleRow(t);}
+  }else{
+    card.outerHTML=renderPaper(paper);
+  }
+}
+
 async function toggleSaved(btn){
-  const id=btn.dataset.id,saved=btn.dataset.saved!=='1';
-  btn.disabled=true;
+  const id=btn.dataset.id,saved=btn.dataset.saved!=='1',card=btn.closest('.paper,.row');
+  card.querySelectorAll('.save-btn').forEach(b=>b.disabled=true);
   const resp=await fetch(`/api/papers/${encodeURIComponent(id)}/saved`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({saved})});
-  btn.disabled=false;
-  if(!resp.ok){toast('Could not update read-later shelf');return;}
+  if(!resp.ok){card.querySelectorAll('.save-btn').forEach(b=>b.disabled=false);toast('Could not update read-later shelf');return;}
+  const paper=await resp.json();
   toast(saved?'Saved for later':'Removed from shelf');
   const count=$('savedCount');count.textContent=Math.max(0,Number(count.textContent||0)+(saved?1:-1));
-  const card=btn.closest('.paper');card.classList.toggle('is-saved',saved);
   if(currentView==='saved'&&!saved){removeCard(card,'emptySaved');return;}
-  btn.outerHTML=saveButton(id,saved);
+  replaceCard(card,paper);
 }
 
 function removeCard(card,emptyId){
-  card.remove();if(!$('papers').children.length)$(emptyId).classList.remove('hidden');
+  if(card.classList.contains('row')){const d=card.nextElementSibling;if(d?.classList.contains('row-details'))d.remove();}
+  card.remove();
+  const left=$('papers').querySelector('.paper,.row');if(!left){$('papers').innerHTML='';$(emptyId).classList.remove('hidden');}
+}
+
+async function setLayout(mode){
+  if(!LAYOUTS.includes(mode)||mode===layout())return;
+  const resp=await fetch('/api/settings/view-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({view_mode:mode})});
+  if(!resp.ok){toast('Could not change layout');return;}
+  settings=await resp.json();await loadPapers();
+}
+
+function toggleRow(btn){
+  const row=btn.closest('.row'),details=row.nextElementSibling;
+  const open=details.classList.toggle('hidden');
+  btn.setAttribute('aria-expanded',String(!open));row.classList.toggle('open',!open);
 }
 
 async function setReaction(btn){
-  const bar=btn.closest('.reactions'),id=bar.dataset.id,card=btn.closest('.paper');
+  const bar=btn.closest('.reactions'),id=bar.dataset.id,card=btn.closest('.paper,.row');
   const current=card.classList.contains('is-liked')?'like':card.classList.contains('is-disliked')?'dislike':null;
   const reaction=btn.dataset.reaction===current?null:btn.dataset.reaction;
-  bar.querySelectorAll('button').forEach(b=>b.disabled=true);
+  card.querySelectorAll('.react-btn').forEach(b=>b.disabled=true);
   const resp=await fetch(`/api/papers/${encodeURIComponent(id)}/reaction`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reaction})});
-  if(!resp.ok){bar.querySelectorAll('button').forEach(b=>b.disabled=false);toast('Could not save reaction');return;}
+  if(!resp.ok){card.querySelectorAll('.react-btn').forEach(b=>b.disabled=false);toast('Could not save reaction');return;}
+  const paper=await resp.json();
   toast(reaction==='like'?'Marked as liked':reaction==='dislike'?'Marked as not interested':'Reaction removed');
   const c={saved:Number($('savedCount').textContent||0),liked:Number($('likedCount').textContent||0),disliked:Number($('dislikedCount').textContent||0)};
   if(current==='like')c.liked--;if(current==='dislike')c.disliked--;if(reaction==='like')c.liked++;if(reaction==='dislike')c.disliked++;
   updateCounts(c);
-  card.classList.toggle('is-liked',reaction==='like');card.classList.toggle('is-disliked',reaction==='dislike');
   if((currentView==='liked'&&reaction!=='like')||(currentView==='disliked'&&reaction!=='dislike')){removeCard(card,currentView==='liked'?'emptyLiked':'emptyDisliked');return;}
-  bar.outerHTML=reactionBar(id,reaction);
+  replaceCard(card,paper);
 }
 
 function setView(view){
@@ -152,7 +209,8 @@ async function scanNow(){
 $('settingsBtn').addEventListener('click',async()=>{await loadSettings();$('settingsDialog').showModal();});
 $('closeSettings').addEventListener('click',()=>$('settingsDialog').close());$('cancelSettings').addEventListener('click',()=>$('settingsDialog').close());
 $('settingsForm').addEventListener('submit',saveSettings);$('scanBtn').addEventListener('click',scanNow);
-$('papers').addEventListener('click',e=>{const b=e.target.closest('.save-btn');if(b)return toggleSaved(b);const r=e.target.closest('.react-btn');if(r)setReaction(r);});
+$('papers').addEventListener('click',e=>{const b=e.target.closest('.save-btn');if(b)return toggleSaved(b);const r=e.target.closest('.react-btn');if(r)return setReaction(r);const t=e.target.closest('.row-toggle');if(t)toggleRow(t);});
+document.querySelectorAll('.layout-btn').forEach(b=>b.addEventListener('click',()=>setLayout(b.dataset.layout)));
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setView(t.dataset.view)));
 document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===currentView));
 

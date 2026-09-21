@@ -26,7 +26,7 @@ DEFAULT_SETTINGS = {
     "interval_minutes": 360,
     "max_results": 100,
     "summary_length": "medium",
-    "view_mode": "cards",
+    "view_mode": "cards3",
     "llm_enabled": True,
     "llm_base_url": "http://127.0.0.1:1234/v1",
     "llm_model": "local-model",
@@ -44,3 +44,12 @@ DEFAULT_SETTINGS = {
     "webhook_enabled": False,
     "webhook_url": "",
 }
+
+VIEW_MODES = ("cards2", "cards3", "table")
+# Older databases stored these names; map them to the current set.
+LEGACY_VIEW_MODES = {"cards": "cards3", "compact": "table"}
+
+
+def normalize_view_mode(value: str | None) -> str:
+    value = LEGACY_VIEW_MODES.get(value or "", value or "")
+    return value if value in VIEW_MODES else "cards3"

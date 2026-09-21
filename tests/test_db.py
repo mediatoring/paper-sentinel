@@ -87,3 +87,16 @@ def test_reactions(tmp_path, monkeypatch):
     assert db.list_papers(view="liked") == []
     assert db.counts()["liked"] == 0
     assert len(db.list_papers(view="all")) == 2
+
+
+def test_view_mode_normalization(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAPER_SENTINEL_DATA", str(tmp_path))
+    import app.db as db
+    importlib.reload(db)
+    db.init_db()
+    assert db.get_settings()["view_mode"] == "cards3"
+    for stored, expected in (("cards", "cards3"), ("compact", "table"), ("table", "table"), ("cards2", "cards2"), ("bogus", "cards3")):
+        s = db.get_settings()
+        s["view_mode"] = stored
+        assert db.save_settings(s)["view_mode"] == expected
+        assert db.get_settings()["view_mode"] == expected

@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app import db
-from app.config import ARXIV_CATEGORIES, SUGGESTED_TAGS
+from app.config import ARXIV_CATEGORIES, LEGACY_VIEW_MODES, SUGGESTED_TAGS, VIEW_MODES
 from app.scheduler import reschedule, start as start_scheduler, stop as stop_scheduler
 from app.services.scanner import scan_once
 
@@ -54,7 +54,7 @@ class SettingsPayload(BaseModel):
     interval_minutes: int = 360
     max_results: int = 100
     summary_length: str = "medium"
-    view_mode: str = "cards"
+    view_mode: str = "cards3"
     llm_enabled: bool = True
     llm_base_url: str = "http://127.0.0.1:1234/v1"
     llm_model: str = "local-model"
@@ -101,11 +101,25 @@ def settings_save(payload: SettingsPayload):
         raise HTTPException(status_code=400, detail="match_mode must be any or all")
     if payload.summary_length not in {"short", "medium", "long"}:
         raise HTTPException(status_code=400, detail="Invalid summary_length")
-    if payload.view_mode not in {"cards", "compact"}:
-        raise HTTPException(status_code=400, detail="Invalid view_mode")
+    if payload.view_mode not in VIEW_MODES and payload.view_mode not in LEGACY_VIEW_MODES:
+        raise HTTPException(status_code=400, detail=f"view_mode must be one of {', '.join(VIEW_MODES)}")
     saved = db.save_settings(payload.model_dump())
     reschedule()
     return saved
+
+
+class ViewModePayload(BaseModel):
+    view_mode: str
+
+
+@app.post("/api/settings/view-mode")
+def settings_view_mode(payload: ViewModePayload):
+    """Quick switch used by the toolbar; keeps the rest of the settings untouched."""
+    if payload.view_mode not in VIEW_MODES:
+        raise HTTPException(status_code=400, detail=f"view_mode must be one of {', '.join(VIEW_MODES)}")
+    settings = db.get_settings()
+    settings["view_mode"] = payload.view_mode
+    return db.save_settings(settings)
 
 
 @app.get("/api/papers")

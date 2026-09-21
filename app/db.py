@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from app.config import DEFAULT_SETTINGS
+from app.config import DEFAULT_SETTINGS, normalize_view_mode
 
 DATA_DIR = Path(os.getenv("PAPER_SENTINEL_DATA", "data"))
 DB_PATH = DATA_DIR / "paper_sentinel.db"
@@ -96,13 +96,16 @@ def get_settings() -> dict[str, Any]:
     if not row:
         return dict(DEFAULT_SETTINGS)
     loaded = json.loads(row["payload"])
-    return {**DEFAULT_SETTINGS, **loaded}
+    merged = {**DEFAULT_SETTINGS, **loaded}
+    merged["view_mode"] = normalize_view_mode(merged.get("view_mode"))
+    return merged
 
 
 def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
     merged = {**DEFAULT_SETTINGS, **settings}
     merged["interval_minutes"] = max(30, int(merged["interval_minutes"]))
     merged["max_results"] = min(300, max(10, int(merged["max_results"])))
+    merged["view_mode"] = normalize_view_mode(merged.get("view_mode"))
     with connect() as conn:
         conn.execute(
             "UPDATE settings SET payload = ?, updated_at = ? WHERE id = 1",

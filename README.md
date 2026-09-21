@@ -14,7 +14,7 @@ Default UI: **http://localhost:5792**
 - `ANY` / `ALL` tag matching against title + abstract before LLM inference
 - Scheduled scanning from every 30 minutes to daily
 - Short / medium / long AI summaries
-- Card or compact display
+- 2-card, 3-card or table layout, switchable from the toolbar
 - Read-later shelf: save any paper for later and switch between all papers and saved ones
 - Like / Not interested reactions stored per paper, with Liked and Not interested views
 - Local OpenAI-compatible LLM support

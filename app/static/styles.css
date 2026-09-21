@@ -123,10 +123,9 @@ details.abstract p{margin:8px 0 0;color:#333}
 .list-side .links{margin-top:4px;justify-content:center}
 .list-foot{grid-column:1 / -1}
 .list-foot .tools{margin-top:4px}
-details.ai-summary{margin:8px 0;border:1px solid #e5e5e0;border-radius:10px;padding:8px 12px;background:#fafaf8}
-details.ai-summary summary{cursor:pointer;font-weight:700;color:#444;user-select:none}
-details.ai-summary summary:hover{color:#5035d9}
-details.ai-summary p{margin:8px 0 0}
+.ai-summary{margin:8px 0}
+.ai-summary p{font-size:14px;line-height:1.6;margin:8px 0}
+.list-item details.abstract{margin-top:6px;padding:8px 12px;border:1px solid #e5e5e0;border-radius:10px;background:#fafaf8}
 .tip{position:relative;cursor:help}
 .tip::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);z-index:50;width:min(360px,80vw);padding:10px 12px;background:#111;color:#fff;font-size:12px;line-height:1.5;font-weight:400;border-radius:8px;box-shadow:0 8px 24px #0004;white-space:normal;opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .12s,transform .12s}
 .tip:hover::after,.tip:focus::after{opacity:1;transform:none}

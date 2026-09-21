@@ -216,8 +216,8 @@ function renderPaper(p){
     </div>
     <h3>${esc(p.title)}</h3><div class="meta">${esc(authors)}</div><div class="tags">${tagBadges(p)}</div>
     ${snippetBlock(p)}
-    ${abstractBlock(p)}
     ${llmBlock(p)}
+    ${abstractBlock(p)}
     ${notesPreview(p)}
     <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}${reactionBar(p.arxiv_id,p.reaction)}</div>
     ${toolsBlock(p)}
@@ -250,8 +250,8 @@ function renderListItem(p){
         <div class="meta authors">${esc(authors)}</div>
         <div class="tags">${tagBadges(p)}</div>
         ${snippetBlock(p)}
-        <p class="abstract-full">${esc(p.abstract)}</p>
-        ${hasAi?`<details class="ai-summary"><summary>AI summary</summary>${llmBlock(p)}</details>`:''}
+        ${hasAi?`<div class="ai-summary">${llmBlock(p)}</div>`:''}
+        <details class="abstract"${hasAi?'':' open'}><summary>Abstract</summary><p>${esc(p.abstract)}</p></details>
         ${notesPreview(p)}
       </div>
       <aside class="list-side">
@@ -292,7 +292,6 @@ function toggleExpandAll(){
   document.querySelectorAll('#papers .list-item').forEach(card=>{
     card.querySelector('.list-body').classList.toggle('hidden',!expandAll);card.classList.toggle('open',expandAll);
     card.querySelector('.list-toggle').setAttribute('aria-expanded',String(expandAll));
-    card.querySelectorAll('details.ai-summary').forEach(d=>d.open=expandAll);
   });
   const b=$('expandAllBtn');if(b)b.textContent=expandAll?'Collapse all':'Expand all';
   expandAll=null;
@@ -377,10 +376,10 @@ async function loadPapers(){
 }
 
 function replaceCard(card,paper){
-  const aiOpen=card.querySelector('details.ai-summary')?.open;
+  const absOpen=card.querySelector('details.abstract')?.open;
   if(card.classList.contains('list-item')&&card.classList.contains('open'))expandedIds.add(paper.arxiv_id);
   card.outerHTML=layout()==='table'?renderListItem(paper):renderPaper(paper);
-  if(aiOpen){const d=$('papers').querySelector(`.paper[data-id="${CSS.escape(paper.arxiv_id)}"] details.ai-summary`);if(d)d.open=true;}
+  if(absOpen){const d=$('papers').querySelector(`.paper[data-id="${CSS.escape(paper.arxiv_id)}"] details.abstract`);if(d)d.open=true;}
 }
 
 function removeCard(card,emptyId){

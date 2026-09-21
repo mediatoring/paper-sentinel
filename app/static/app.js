@@ -95,8 +95,10 @@ function renderPaper(p){
   const authors=(p.authors||[]).slice(0,4).join(', ')+(p.authors?.length>4?' et al.':'');
   const tags=(p.matched_tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('');
   return `<article class="${paperClasses(p,'paper')}" data-id="${esc(p.arxiv_id)}">
-    <div class="card-actions">${reactionBar(p.arxiv_id,p.reaction,true)}${saveButton(p.arxiv_id,p.saved)}</div>
-    <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
+    <div class="card-head">
+      <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
+      <div class="card-actions">${reactionBar(p.arxiv_id,p.reaction,true)}${saveButton(p.arxiv_id,p.saved)}</div>
+    </div>
     <h3>${esc(p.title)}</h3><div class="meta">${esc(authors)}</div><div class="tags">${tags}</div>
     ${p.summary?`<p><span class="label">Summary.</span> ${esc(p.summary)}</p>`:''}
     ${p.why_relevant?`<p><span class="label">Why it matters.</span> ${esc(p.why_relevant)}</p>`:''}

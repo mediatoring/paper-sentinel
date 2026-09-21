@@ -7,9 +7,9 @@
 .tab{border:1px solid #cfcfc9;background:#fff;border-radius:999px;padding:8px 14px;font-weight:600;color:#444}
 .tab.active{background:#111;color:#fff;border-color:#111}
 .tab .count{display:inline-block;min-width:20px;margin-left:6px;padding:1px 6px;border-radius:999px;background:#7656ff;color:#fff;font-size:12px;text-align:center}
-.paper{position:relative}
-.paper .meta:first-of-type,.paper h3{padding-right:200px}
-.card-actions{position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:6px}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.card-head .meta{flex:1 1 140px;min-width:0}
+.card-actions{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
 .card-actions .reactions{margin-left:0}
 .reactions.compact .react-btn span{display:none}
 .reactions.compact .react-btn{padding:6px 7px}

@@ -31,10 +31,32 @@
       </div>
     </nav>
 
+    <section class="toolbar">
+      <form id="searchForm" class="search" role="search">
+        <input id="searchInput" type="search" placeholder="Search title, abstract, summary, notes and PDF text…  ( / )" autocomplete="off">
+        <select id="searchMode" title="Search mode">
+          <option value="hybrid">Hybrid</option>
+          <option value="text">Text</option>
+          <option value="semantic">Semantic</option>
+        </select>
+        <button type="submit" class="primary">Search</button>
+        <button type="button" id="searchClear" class="hidden">Clear</button>
+      </form>
+      <label class="sort">Sort
+        <select id="sortMode">
+          <option value="newest">Newest</option>
+          <option value="score">Best match (from your likes)</option>
+        </select>
+      </label>
+    </section>
+    <datalist id="knownTags"></datalist>
+
     <section class="statusbar">
       <span id="scanStatus">Status: —</span>
       <span id="lastScan">Last scan: —</span>
+      <span id="libraryStat">Library: —</span>
       <span><a href="/feed.xml" target="_blank">RSS feed</a></span>
+      <span id="searchNote" class="hidden"></span>
       <span id="scanError" class="status-error hidden"></span>
     </section>
 
@@ -129,6 +151,20 @@
             <input id="llmTemperature" type="number" min="0" max="2" step="0.1">
           </label>
           <small>LM Studio default: http://127.0.0.1:1234/v1. Ollama OpenAI-compatible: http://127.0.0.1:11434/v1.</small>
+          <label class="toggle"><input id="embeddingsEnabled" type="checkbox"><span>Embeddings: semantic search, similar papers, match score</span></label>
+          <label class="field">Embedding model
+            <input id="embeddingModel" type="text" placeholder="auto-detect (first model with “embed” in its name)">
+            <small>Uses the same server via /v1/embeddings, e.g. text-embedding-nomic-embed-text-v1.5 or a Qwen3 embedding model.</small>
+          </label>
+          <button type="button" id="rebuildEmbeddings">Rebuild embeddings for stored papers</button>
+        </fieldset>
+      </div>
+
+      <div class="two-col">
+        <fieldset>
+          <legend>Library</legend>
+          <label class="toggle"><input id="libraryAutoDownload" type="checkbox"><span>Download the PDF automatically when a paper is saved or liked</span></label>
+          <small>PDFs are stored in data/library and their text is indexed for full-text search.</small>
         </fieldset>
       </div>
 

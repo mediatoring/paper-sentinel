@@ -7,6 +7,7 @@ from typing import Any
 
 from app import db
 from app.services.arxiv import fetch_latest
+from app.services.embeddings import embed_paper
 from app.services.llm import analyze_paper
 from app.services.matcher import match_paper
 from app.services.notifier import send_notifications
@@ -25,6 +26,7 @@ def scan_once() -> dict[str, Any]:
         matched_count = 0
         new_items: list[dict[str, Any]] = []
         recent = db.recent_context(20)
+        preferences = db.preference_examples(10)
         for paper in papers:
             is_match, matched_tags = match_paper(paper, settings["tags"], settings["match_mode"])
             if not is_match:
@@ -33,8 +35,10 @@ def scan_once() -> dict[str, Any]:
             if db.paper_exists(paper["arxiv_id"]):
                 continue
             paper["matched_tags"] = matched_tags
-            analysis = analyze_paper(paper, settings, matched_tags, recent)
-            db.insert_paper(paper, analysis)
+            analysis = analyze_paper(paper, settings, matched_tags, recent, preferences)
+            vector, model = embed_paper(settings, {**paper, **analysis})
+            score = db.score_for(vector, model) if vector else None
+            db.insert_paper(paper, analysis, vector, model, score)
             stored = {**paper, **analysis}
             new_items.append(stored)
             recent.insert(0, {

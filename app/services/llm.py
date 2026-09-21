@@ -33,11 +33,27 @@ def _extract_json(text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
+def _preference_block(preferences: dict[str, list[dict[str, str]]] | None) -> str:
+    if not preferences:
+        return ""
+    liked = "\n".join(f"- {p['title']}" for p in preferences.get("liked", [])[:10])
+    disliked = "\n".join(f"- {p['title']}" for p in preferences.get("disliked", [])[:10])
+    if not liked and not disliked:
+        return ""
+    block = "\nUSER PREFERENCES (learned from explicit feedback; use them to judge relevance, not to invent facts):"
+    if liked:
+        block += f"\nPapers the user marked as useful:\n{liked}"
+    if disliked:
+        block += f"\nPapers the user marked as not interesting:\n{disliked}"
+    return block + "\n"
+
+
 def analyze_paper(
     paper: dict[str, Any],
     settings: dict[str, Any],
     matched_tags: list[str],
     recent: list[dict[str, str]],
+    preferences: dict[str, list[dict[str, str]]] | None = None,
 ) -> dict[str, str]:
     if not settings.get("llm_enabled"):
         return _fallback(paper, matched_tags)
@@ -59,6 +75,8 @@ Write the summary at roughly {target} words.
 Return ONLY valid JSON with these string fields:
 summary, why_relevant, key_contribution, limitations, related_to
 
+In why_relevant, relate the paper to the user's tags and, when preferences are given, to what they liked or disliked.
+{_preference_block(preferences)}
 For related_to, mention only papers from the recent-paper list when there is a plausible topical relation. Otherwise use an empty string.
 
 RECENT PAPERS:

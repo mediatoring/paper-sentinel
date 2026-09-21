@@ -17,6 +17,11 @@ Default UI: **http://localhost:5792**
 - 2-card, 3-card or table layout, switchable from the toolbar
 - Read-later shelf: save any paper for later and switch between all papers and saved ones
 - Like / Not interested reactions stored per paper, with Liked and Not interested views
+- Full-text search (SQLite FTS5 with stemming) over title, abstract, summary, your notes and PDF text
+- Semantic and hybrid search plus "Similar papers" using embeddings from your local LLM server
+- Notes and your own tags on every paper
+- PDF library: download PDFs into `data/library`, text is extracted and indexed
+- Learns from your reactions: a match score ranks new papers and liked/disliked titles inform the LLM summaries
 - Local OpenAI-compatible LLM support
 - Graceful extractive fallback when the LLM is disabled or unavailable
 - Basic cross-reference hints against recently stored papers
@@ -68,6 +73,15 @@ docker compose up -d --build
 Then open http://localhost:5792.
 
 When Paper Sentinel itself runs in Docker, a local LLM running on the host is usually reached as `http://host.docker.internal:1234/v1` (LM Studio) or `http://host.docker.internal:11434/v1` (Ollama). The included Compose file maps this host name on Linux as well.
+
+## Search, library and learning
+
+- **Search box** (press `/`): *Text* uses SQLite FTS5 with Porter stemming, so `retrieving` also finds `retrieval`. Quote phrases: `"long context"`. *Semantic* embeds your query with the local embedding model and ranks by cosine similarity. *Hybrid* (default) fuses both with reciprocal rank fusion and falls back to text when embeddings are unavailable.
+- **Embeddings** are requested from the same OpenAI-compatible server via `/v1/embeddings`. Leave the model empty to auto-detect the first model whose id contains `embed` (LM Studio: load e.g. `text-embedding-nomic-embed-text-v1.5`). Use *Rebuild embeddings* in Settings after changing the model.
+- **Similar** on a card lists the closest stored papers by meaning.
+- **Notes and tags** are yours; they are searchable and shown as green badges.
+- **PDF library**: *Save PDF* downloads the paper into `data/library/` and indexes its text; by default this also happens when you save or like a paper. Files are served at `/library/<arxiv_id>.pdf`.
+- **Match score**: once you like something, every embedded paper gets a score (similarity to the mean of liked papers, pushed away from disliked ones). Sort by *Best match* to see it in action. Liked and disliked titles are also passed to the LLM as preference context for new summaries.
 
 ## Local LLM setup
 

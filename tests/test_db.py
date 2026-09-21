@@ -11,3 +11,53 @@ def test_settings_roundtrip(tmp_path, monkeypatch):
     saved = db.save_settings(s)
     assert saved["interval_minutes"] == 30
     assert db.get_settings()["interval_minutes"] == 30
+
+
+def _paper(arxiv_id):
+    return {
+        "arxiv_id": arxiv_id, "title": "T", "abstract": "A", "authors": [], "categories": ["cs.AI"],
+        "abs_url": f"https://arxiv.org/abs/{arxiv_id}", "pdf_url": None, "matched_tags": ["agents"],
+    }
+
+
+def test_read_later_shelf(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAPER_SENTINEL_DATA", str(tmp_path))
+    import app.db as db
+    importlib.reload(db)
+    db.init_db()
+    db.insert_paper(_paper("1"), {})
+    db.insert_paper(_paper("2"), {})
+    assert db.count_saved() == 0
+    assert db.list_papers(saved_only=True) == []
+    assert db.set_saved("missing", True) is None
+
+    saved = db.set_saved("2", True)
+    assert saved["saved"] is True and saved["saved_at"]
+    assert [p["arxiv_id"] for p in db.list_papers(saved_only=True)] == ["2"]
+    assert db.count_saved() == 1
+    assert {p["arxiv_id"]: p["saved"] for p in db.list_papers()} == {"1": False, "2": True}
+
+    db.set_saved("2", False)
+    assert db.count_saved() == 0
+    assert db.list_papers(saved_only=True) == []
+
+
+def test_migration_adds_saved_columns(tmp_path, monkeypatch):
+    import sqlite3
+    monkeypatch.setenv("PAPER_SENTINEL_DATA", str(tmp_path))
+    import app.db as db
+    importlib.reload(db)
+    tmp_path.mkdir(exist_ok=True)
+    conn = sqlite3.connect(db.DB_PATH)
+    conn.executescript("""
+        CREATE TABLE papers (arxiv_id TEXT PRIMARY KEY, title TEXT NOT NULL, abstract TEXT NOT NULL,
+            authors TEXT NOT NULL, categories TEXT NOT NULL, published TEXT, updated TEXT,
+            abs_url TEXT NOT NULL, pdf_url TEXT, matched_tags TEXT NOT NULL, summary TEXT,
+            why_relevant TEXT, key_contribution TEXT, limitations TEXT, related_to TEXT, created_at TEXT NOT NULL);
+        INSERT INTO papers VALUES ('old','T','A','[]','[]',NULL,NULL,'u',NULL,'[]','','','','','','2026-01-01');
+    """)
+    conn.commit(); conn.close()
+    db.init_db()
+    papers = db.list_papers()
+    assert papers[0]["arxiv_id"] == "old" and papers[0]["saved"] is False
+    assert db.set_saved("old", True)["saved"] is True

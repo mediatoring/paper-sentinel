@@ -94,14 +94,27 @@ def settings_save(payload: SettingsPayload):
 
 
 @app.get("/api/papers")
-def papers(limit: int = Query(100, ge=1, le=500)):
-    return db.list_papers(limit)
+def papers(limit: int = Query(100, ge=1, le=500), saved: bool = False):
+    return db.list_papers(limit, saved_only=saved)
+
+
+class SavePayload(BaseModel):
+    saved: bool = True
+
+
+@app.post("/api/papers/{arxiv_id}/saved")
+def paper_set_saved(arxiv_id: str, payload: SavePayload):
+    paper = db.set_saved(arxiv_id, payload.saved)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return paper
 
 
 @app.get("/api/status")
 def status():
     state = db.get_state()
     state["schedule"] = db.get_settings().get("interval_minutes", 360)
+    state["saved_count"] = db.count_saved()
     return state
 
 

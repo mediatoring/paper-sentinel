@@ -19,6 +19,11 @@
   </header>
 
   <main>
+    <nav class="tabs" aria-label="Paper lists">
+      <button type="button" class="tab active" data-view="all">All papers</button>
+      <button type="button" class="tab" data-view="saved">Read later <span id="savedCount" class="count">0</span></button>
+    </nav>
+
     <section class="statusbar">
       <span id="scanStatus">Status: —</span>
       <span id="lastScan">Last scan: —</span>
@@ -28,6 +33,9 @@
 
     <section id="emptyState" class="empty hidden">
       No matching papers stored yet. Configure your radar and run the first scan.
+    </section>
+    <section id="emptySaved" class="empty hidden">
+      Your read-later shelf is empty. Use <strong>Read later</strong> on any paper to keep it here.
     </section>
 
     <section id="papers" class="paper-grid"></section>

@@ -1,6 +1,8 @@
 const $ = (id) => document.getElementById(id);
 let settings = null;
 let lastKnownCount = 0;
+let currentView = 'all';
+try { currentView = localStorage.getItem('ps.view') === 'saved' ? 'saved' : 'all'; } catch {}
 
 function toast(message){
   const el=document.createElement('div');el.className='toast';el.textContent=message;document.body.appendChild(el);setTimeout(()=>el.remove(),3000);
@@ -52,28 +54,52 @@ function renderPaper(p){
     ${p.key_contribution?`<p><span class="label">Key contribution.</span> ${esc(p.key_contribution)}</p>`:''}
     ${p.limitations?`<p><span class="label">Limitations / uncertainty.</span> ${esc(p.limitations)}</p>`:''}
     ${p.related_to?`<p><span class="label">Related.</span> ${esc(p.related_to)}</p>`:''}
-    <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
+    <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}
+      <button type="button" class="save-btn${p.saved?' saved':''}" data-id="${esc(p.arxiv_id)}" data-saved="${p.saved?1:0}" title="${p.saved?'Remove from read-later shelf':'Save to read later'}">${p.saved?'★ Saved':'☆ Read later'}</button>
+    </div>
   </article>`;
 }
 
 async function loadPapers(){
-  const papers=await fetch('/api/papers?limit=200').then(r=>r.json());
+  const saved=currentView==='saved';
+  const papers=await fetch(`/api/papers?limit=200${saved?'&saved=true':''}`).then(r=>r.json());
   $('papers').className='paper-grid '+((settings?.view_mode||'cards')==='compact'?'compact':'');
-  $('papers').innerHTML=papers.map(renderPaper).join('');$('emptyState').classList.toggle('hidden',papers.length!==0);
+  $('papers').innerHTML=papers.map(renderPaper).join('');
+  $('emptyState').classList.toggle('hidden',saved||papers.length!==0);
+  $('emptySaved').classList.toggle('hidden',!saved||papers.length!==0);
+  if(saved){$('savedCount').textContent=papers.length;return;}
   if(lastKnownCount && papers.length>lastKnownCount && settings?.browser_notifications && 'Notification' in window && Notification.permission==='granted'){
     new Notification('Paper Sentinel',{body:`${papers.length-lastKnownCount} new relevant paper(s)`});
   }
   lastKnownCount=papers.length;
 }
 
+async function toggleSaved(btn){
+  const id=btn.dataset.id,saved=btn.dataset.saved!=='1';
+  btn.disabled=true;
+  const resp=await fetch(`/api/papers/${encodeURIComponent(id)}/saved`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({saved})});
+  btn.disabled=false;
+  if(!resp.ok){toast('Could not update read-later shelf');return;}
+  toast(saved?'Saved for later':'Removed from shelf');
+  const count=$('savedCount');count.textContent=Math.max(0,Number(count.textContent||0)+(saved?1:-1));
+  if(currentView==='saved'&&!saved){btn.closest('.paper').remove();if(!$('papers').children.length)$('emptySaved').classList.remove('hidden');return;}
+  btn.dataset.saved=saved?'1':'0';btn.classList.toggle('saved',saved);btn.textContent=saved?'★ Saved':'☆ Read later';btn.title=saved?'Remove from read-later shelf':'Save to read later';
+}
+
+function setView(view){
+  currentView=view;try{localStorage.setItem('ps.view',view)}catch{}
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));
+  loadPapers();
+}
+
 async function loadStatus(){
   const s=await fetch('/api/status').then(r=>r.json());
   const status=s.scan_status||'idle';
-  $('scanStatus').textContent=`Status: ${status}`;$('scanStatus').className=status==='error'?'status-error':'';
+  $('scanStatus').textContent=`Status: ${status}`;if(s.saved_count!==undefined)$('savedCount').textContent=s.saved_count;$('scanStatus').className=status==='error'?'status-error':'';
   $('lastScan').textContent=`Last scan: ${s.last_scan?dateText(s.last_scan):'never'}`;
   const err=$('scanError');err.textContent=status==='error'&&s.last_error?`Last error: ${s.last_error}`:'';err.classList.toggle('hidden',!err.textContent);
   $('scanBtn').disabled=status==='running';
-  if(status!=='running') await loadPapers();
+  if(status!=='running'&&currentView==='all') await loadPapers();
 }
 
 async function scanNow(){
@@ -83,5 +109,8 @@ async function scanNow(){
 $('settingsBtn').addEventListener('click',async()=>{await loadSettings();$('settingsDialog').showModal();});
 $('closeSettings').addEventListener('click',()=>$('settingsDialog').close());$('cancelSettings').addEventListener('click',()=>$('settingsDialog').close());
 $('settingsForm').addEventListener('submit',saveSettings);$('scanBtn').addEventListener('click',scanNow);
+$('papers').addEventListener('click',e=>{const b=e.target.closest('.save-btn');if(b)toggleSaved(b);});
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setView(t.dataset.view)));
+document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===currentView));
 
 (async()=>{await loadSettings();await loadPapers();await loadStatus();setInterval(loadStatus,5000);})();

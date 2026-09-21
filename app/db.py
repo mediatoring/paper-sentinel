@@ -56,7 +56,9 @@ def init_db() -> None:
                 key_contribution TEXT,
                 limitations TEXT,
                 related_to TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                saved INTEGER NOT NULL DEFAULT 0,
+                saved_at TEXT
             );
 
             CREATE TABLE IF NOT EXISTS state (
@@ -65,12 +67,21 @@ def init_db() -> None:
             );
             """
         )
+        _migrate(conn)
         existing = conn.execute("SELECT id FROM settings WHERE id = 1").fetchone()
         if not existing:
             conn.execute(
                 "INSERT INTO settings (id, payload, updated_at) VALUES (1, ?, ?)",
                 (json.dumps(DEFAULT_SETTINGS), _now()),
             )
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(papers)").fetchall()}
+    if "saved" not in columns:
+        conn.execute("ALTER TABLE papers ADD COLUMN saved INTEGER NOT NULL DEFAULT 0")
+    if "saved_at" not in columns:
+        conn.execute("ALTER TABLE papers ADD COLUMN saved_at TEXT")
 
 
 def get_settings() -> dict[str, Any]:
@@ -125,16 +136,36 @@ def _paper_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     for key in ("authors", "categories", "matched_tags"):
         d[key] = json.loads(d[key] or "[]")
+    d["saved"] = bool(d.get("saved"))
     return d
 
 
-def list_papers(limit: int = 100) -> list[dict[str, Any]]:
+def list_papers(limit: int = 100, saved_only: bool = False) -> list[dict[str, Any]]:
+    where = "WHERE saved = 1" if saved_only else ""
+    order = "saved_at DESC" if saved_only else "COALESCE(published, created_at) DESC"
     with connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM papers ORDER BY COALESCE(published, created_at) DESC LIMIT ?",
+            f"SELECT * FROM papers {where} ORDER BY {order} LIMIT ?",
             (limit,),
         ).fetchall()
     return [_paper_row_to_dict(r) for r in rows]
+
+
+def set_saved(arxiv_id: str, saved: bool) -> dict[str, Any] | None:
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE papers SET saved = ?, saved_at = ? WHERE arxiv_id = ?",
+            (1 if saved else 0, _now() if saved else None, arxiv_id),
+        )
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
+    return _paper_row_to_dict(row)
+
+
+def count_saved() -> int:
+    with connect() as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM papers WHERE saved = 1").fetchone()[0])
 
 
 def recent_context(limit: int = 20) -> list[dict[str, str]]:

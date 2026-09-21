@@ -161,3 +161,5 @@ details.abstract p{margin:8px 0 0;color:#333}
 .mini.icon.warn svg path{fill:currentColor}
 .tool-btn svg{flex:0 0 auto}
 .paper p code,.ai-summary code,.notes-preview code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:#f1f1ec;padding:1px 5px;border-radius:4px}
+.topbar .credit{color:#c9c9ff;text-decoration:none;border-bottom:1px solid #6b6bb3}
+.topbar .credit:hover{color:#fff;border-bottom-color:#fff}

@@ -6,6 +6,8 @@ import threading
 import time
 from typing import Any
 
+import unicodedata
+
 import feedparser
 import httpx
 
@@ -26,8 +28,37 @@ _throttle_lock = threading.Lock()
 _last_request_at = 0.0
 
 
+# TeX accent commands occasionally present in arXiv metadata, e.g. H\"oth -> Höth, \'e -> é, \v{s} -> š.
+_TEX_COMBINING = {
+    '"': "\u0308", "'": "\u0301", "`": "\u0300", "^": "\u0302", "~": "\u0303", "=": "\u0304",
+    ".": "\u0307", "u": "\u0306", "v": "\u030c", "H": "\u030b", "c": "\u0327", "k": "\u0328",
+    "r": "\u030a", "d": "\u0323", "b": "\u0331", "t": "\u0361",
+}
+_TEX_LETTERS = {
+    "ss": "ß", "o": "ø", "O": "Ø", "aa": "å", "AA": "Å", "ae": "æ", "AE": "Æ", "oe": "œ", "OE": "Œ",
+    "l": "ł", "L": "Ł", "i": "ı", "j": "ȷ", "dh": "ð", "DH": "Ð", "th": "þ", "TH": "Þ", "ng": "ŋ", "NG": "Ŋ",
+}
+_TEX_ACCENT_RE = re.compile(
+    r"\\([\"'`^~=.uvHckrdbt])\s*(?:\{\\?([A-Za-z])\}|\\?([A-Za-z]))"
+)
+_TEX_LETTER_RE = re.compile(r"\\(ss|aa|AA|ae|AE|oe|OE|dh|DH|th|TH|ng|NG|[oOlLij])(?![A-Za-z])\s?")
+
+
+def detex(text: str) -> str:
+    """Convert TeX-style accents and special letters to Unicode and drop stray braces."""
+    if not text or "\\" not in text and "{" not in text:
+        return text or ""
+    def accent(m: re.Match) -> str:
+        letter = m.group(2) or m.group(3)
+        return unicodedata.normalize("NFC", letter + _TEX_COMBINING[m.group(1)])
+    out = _TEX_ACCENT_RE.sub(accent, text)
+    out = _TEX_LETTER_RE.sub(lambda m: _TEX_LETTERS[m.group(1)], out)
+    out = re.sub(r"(?<!\\)[{}]", "", out)
+    return out
+
+
 def _clean(text: str) -> str:
-    return re.sub(r"\s+", " ", text or "").strip()
+    return re.sub(r"\s+", " ", detex(text or "")).strip()
 
 
 def _throttle() -> None:
@@ -81,7 +112,7 @@ def _authors_from(entry: Any) -> list[str]:
     # RSS feeds put all authors into one dc:creator string: "A, B, C"
     authors: list[str] = []
     for name in names:
-        authors.extend(part.strip() for part in name.split(",") if part.strip())
+        authors.extend(_clean(part) for part in name.split(",") if part.strip())
     return authors
 
 

@@ -57,3 +57,19 @@ def test_parse_rss_feed():
 
 def test_parse_empty_feed():
     assert parse_feed("<feed xmlns='http://www.w3.org/2005/Atom'></feed>") == []
+
+
+def test_detex_accents_and_special_letters():
+    from app.services.arxiv import detex, parse_feed
+    cases = {
+        'Max H\\"oth': "Max Höth", 'Bj\\"orn': "Björn", "Mert \\.Inan": "Mert İnan", "B\\'alint Gyevn\\'ar": "Bálint Gyevnár",
+        "Ji\\v{r}\\'i Nov\\'ak": "Jiří Novák", "Fran\\c{c}ois": "François", "Erd\\H{o}s": "Erdős", "Gau\\ss": "Gauß",
+        '{\\"O}zt\\"urk': "Öztürk", "Bj{\\o}rn": "Bjørn", "Stra{\\ss}e": "Straße", "Se\\~nor": "Señor", "plain": "plain",
+    }
+    for src, expected in cases.items():
+        assert detex(src) == expected, src
+    feed = """<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry>
+      <id>http://arxiv.org/abs/2509.00003v1</id><title>Learning {\\"U}ber-graphs</title><summary>By Bj\\"orn.</summary>
+      <author><name>Max H\\"oth</name></author><link href="http://arxiv.org/abs/2509.00003v1"/></entry></feed>"""
+    p = parse_feed(feed)[0]
+    assert p["authors"] == ["Max Höth"] and p["title"] == "Learning Über-graphs" and p["abstract"] == "By Björn."

@@ -9,8 +9,8 @@ Default UI: **http://localhost:5792**
 ## Features
 
 - Browser configuration; no config file editing required
-- arXiv categories: AI, NLP, CV, ML, neural/evolutionary computing, robotics, stat.ML
-- Clickable suggested research tags plus custom tags
+- arXiv categories: 23 built-in (cs.AI, cs.CL, cs.CV, cs.LG, cs.IR, cs.RO, stat.ML, …) plus any other arXiv category id you type in
+- Clickable suggested research tags plus custom tags; custom tags and categories become toggleable chips
 - `ANY` / `ALL` tag matching against title + abstract before LLM inference
 - Scheduled scanning from every 30 minutes to daily
 - Short / medium / long AI summaries

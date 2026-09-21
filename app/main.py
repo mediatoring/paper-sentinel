@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app import db
-from app.config import ARXIV_CATEGORIES, LEGACY_VIEW_MODES, SUGGESTED_TAGS, VIEW_MODES
+from app.config import ARXIV_CATEGORIES, LEGACY_VIEW_MODES, SUGGESTED_TAGS, VIEW_MODES, normalize_categories
 from app.scheduler import reschedule, start as start_scheduler, stop as stop_scheduler
 from app.services import embeddings, library, llm_health
 from app.services.scanner import scan_once
@@ -97,10 +97,12 @@ def settings_get():
 
 @app.post("/api/settings")
 def settings_save(payload: SettingsPayload):
-    allowed_categories = {c[0] for c in ARXIV_CATEGORIES}
-    categories = [c for c in payload.categories if c in allowed_categories]
+    categories, rejected = normalize_categories(payload.categories)
+    if rejected:
+        raise HTTPException(status_code=400, detail=f"Not a valid arXiv category id: {', '.join(rejected)} (expected e.g. cs.IR, stat.ML, q-bio.NC).")
     if not categories:
         raise HTTPException(status_code=400, detail="Select at least one arXiv category.")
+    payload.categories = categories
     if payload.match_mode not in {"any", "all"}:
         raise HTTPException(status_code=400, detail="match_mode must be any or all")
     if payload.summary_length not in {"short", "medium", "long"}:

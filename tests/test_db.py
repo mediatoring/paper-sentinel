@@ -100,3 +100,10 @@ def test_view_mode_normalization(tmp_path, monkeypatch):
         s["view_mode"] = stored
         assert db.save_settings(s)["view_mode"] == expected
         assert db.get_settings()["view_mode"] == expected
+
+
+def test_normalize_categories():
+    from app.config import normalize_categories
+    valid, rejected = normalize_categories(["cs.AI", " cs.IR ", "q-bio.NC", "hep-th", "cs.ai", "", "not a cat", "CS.LG", "physics.comp-ph"])
+    assert valid == ["cs.AI", "cs.IR", "q-bio.NC", "hep-th", "physics.comp-ph"]
+    assert rejected == ["not a cat", "CS.LG"]

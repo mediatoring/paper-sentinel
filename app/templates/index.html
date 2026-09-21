@@ -110,6 +110,11 @@
           <label class="chip"><input type="checkbox" name="categories" value="{{ code }}"><span>{{ code }} · {{ label }}</span></label>
           {% endfor %}
         </div>
+        <div class="chips custom-chips" id="customCategoryChips"></div>
+        <label class="field">Other categories
+          <input id="customCategories" type="text" placeholder="e.g. cs.PL, physics.comp-ph, q-fin.ST — press Enter to add">
+          <small>Comma-separated arXiv category ids. Full list: <a href="https://arxiv.org/category_taxonomy" target="_blank" rel="noreferrer">arxiv.org/category_taxonomy</a>. Added ids become chips you can toggle; uncheck a chip to drop it.</small>
+        </label>
       </fieldset>
 
       <fieldset>
@@ -119,9 +124,10 @@
           <label class="chip"><input type="checkbox" name="suggested_tags" value="{{ tag }}"><span>{{ tag }}</span></label>
           {% endfor %}
         </div>
+        <div class="chips custom-chips" id="customTagChips"></div>
         <label class="field">Custom tags
-          <input id="customTags" type="text" placeholder="e.g. brand learnability, entity memorization">
-          <small>Comma-separated. Tags are matched against title + abstract before the LLM is used.</small>
+          <input id="customTags" type="text" placeholder="e.g. brand learnability, entity memorization — press Enter to add">
+          <small>Comma-separated. Tags are matched against title + abstract before the LLM is used. Added tags become chips you can toggle; uncheck a chip to drop it.</small>
         </label>
         <label class="field">Match mode
           <select id="matchMode"><option value="any">Any selected tag</option><option value="all">All selected tags</option></select>

@@ -24,13 +24,47 @@ async function postJSON(url,body,method='POST'){
 
 /* ------------------------------------------------------------------ settings */
 
+// Custom chips: values typed into an input become toggleable chips next to the built-in ones.
+function renderCustomChips(containerId,name,values){
+  $(containerId).innerHTML=values.map(v=>`<label class="chip custom"><input type="checkbox" name="${name}" value="${esc(v)}" checked><span>${esc(v)}</span></label>`).join('');
+}
+function customChipValues(name,checkedOnly=true){
+  return [...document.querySelectorAll(`input[name="${name}"]${checkedOnly?':checked':''}`)].map(x=>x.value);
+}
+function addCustomChips(containerId,name,inputId,builtinName){
+  const input=$(inputId);
+  const typed=input.value.split(',').map(x=>x.trim()).filter(Boolean);
+  if(!typed.length)return;
+  const builtin=new Map([...document.querySelectorAll(`input[name="${builtinName}"]`)].map(x=>[x.value.toLowerCase(),x]));
+  const existing=customChipValues(name,false);
+  const lower=new Set(existing.map(v=>v.toLowerCase()));
+  const added=[];
+  for(const v of typed){
+    const b=builtin.get(v.toLowerCase());
+    if(b){b.checked=true;continue;}
+    if(lower.has(v.toLowerCase()))continue;
+    lower.add(v.toLowerCase());added.push(v);
+  }
+  renderCustomChips(containerId,name,[...existing,...added]);
+  input.value='';
+}
+function wireChipInput(inputId,containerId,name,builtinName){
+  $(inputId).addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();addCustomChips(containerId,name,inputId,builtinName);}});
+  $(inputId).addEventListener('blur',()=>addCustomChips(containerId,name,inputId,builtinName));
+}
+
 async function loadSettings(){
   settings=await fetch('/api/settings').then(r=>r.json());
-  document.querySelectorAll('input[name="categories"]').forEach(x=>x.checked=settings.categories.includes(x.value));
+  const catInputs=[...document.querySelectorAll('input[name="categories"]')];
+  catInputs.forEach(x=>x.checked=settings.categories.includes(x.value));
+  const knownCats=new Set(catInputs.map(x=>x.value));
+  renderCustomChips('customCategoryChips','custom_categories',settings.categories.filter(c=>!knownCats.has(c)));
+  $('customCategories').value='';
   const suggested=[...document.querySelectorAll('input[name="suggested_tags"]')];
   suggested.forEach(x=>x.checked=settings.tags.includes(x.value));
   const suggestedVals=new Set(suggested.map(x=>x.value));
-  $('customTags').value=settings.tags.filter(t=>!suggestedVals.has(t)).join(', ');
+  renderCustomChips('customTagChips','custom_tags',settings.tags.filter(t=>!suggestedVals.has(t)));
+  $('customTags').value='';
   $('matchMode').value=settings.match_mode;$('intervalMinutes').value=String(settings.interval_minutes);
   $('maxResults').value=settings.max_results;$('summaryLength').value=settings.summary_length;$('viewMode').value=settings.view_mode;
   $('llmEnabled').checked=settings.llm_enabled;$('llmBaseUrl').value=settings.llm_base_url;$('llmModel').value=settings.llm_model;
@@ -44,10 +78,12 @@ async function loadSettings(){
 }
 
 function gatherSettings(){
-  const categories=[...document.querySelectorAll('input[name="categories"]:checked')].map(x=>x.value);
+  addCustomChips('customCategoryChips','custom_categories','customCategories','categories');
+  addCustomChips('customTagChips','custom_tags','customTags','suggested_tags');
+  const checked=[...document.querySelectorAll('input[name="categories"]:checked')].map(x=>x.value);
+  const categories=[...new Set([...checked,...customChipValues('custom_categories')])];
   const selected=[...document.querySelectorAll('input[name="suggested_tags"]:checked')].map(x=>x.value);
-  const custom=$('customTags').value.split(',').map(x=>x.trim()).filter(Boolean);
-  const tags=[...new Set([...selected,...custom])];
+  const tags=[...new Set([...selected,...customChipValues('custom_tags')])];
   return {categories,tags,match_mode:$('matchMode').value,interval_minutes:Number($('intervalMinutes').value),max_results:Number($('maxResults').value),summary_length:$('summaryLength').value,view_mode:$('viewMode').value,
     llm_enabled:$('llmEnabled').checked,llm_base_url:$('llmBaseUrl').value.trim(),llm_model:$('llmModel').value.trim(),llm_api_key:$('llmApiKey').value,llm_temperature:Number($('llmTemperature').value),
     embeddings_enabled:$('embeddingsEnabled').checked,embedding_model:$('embeddingModel').value.trim(),library_auto_download:$('libraryAutoDownload').checked,
@@ -459,6 +495,8 @@ async function scanNow(){
 $('settingsBtn').addEventListener('click',async()=>{await loadSettings();$('settingsDialog').showModal();});
 $('closeSettings').addEventListener('click',()=>$('settingsDialog').close());$('cancelSettings').addEventListener('click',()=>$('settingsDialog').close());
 $('settingsForm').addEventListener('submit',saveSettings);$('scanBtn').addEventListener('click',scanNow);
+wireChipInput('customTags','customTagChips','custom_tags','suggested_tags');
+wireChipInput('customCategories','customCategoryChips','custom_categories','categories');
 $('rebuildEmbeddings').addEventListener('click',rebuildEmbeddings);
 $('llmStartBtn').addEventListener('click',()=>llmAction('/api/llm/start',undefined,'Start server'));
 $('llmLoadChatBtn').addEventListener('click',()=>llmAction('/api/llm/load',{kind:'chat'},'Load chat model'));
@@ -490,4 +528,5 @@ $('searchInput').addEventListener('keydown',e=>{if(e.key==='Escape')clearSearch(
 $('sortMode').value=currentSort;$('sortMode').addEventListener('change',e=>setSort(e.target.value));
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();$('searchInput').focus();}});
 
-(async()=>{await loadSettings();await loadPapers();await loadStatus();setInterval(loadStatus,5000);})();
+(async()=>{await loadSettings();await loadPapers();await loadStatus();setInterval(loadStatus,5000);
+  if(location.hash==='#settings'){$('settingsDialog').showModal();}})();

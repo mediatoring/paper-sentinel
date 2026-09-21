@@ -125,3 +125,8 @@ details.abstract p{margin:8px 0 0;color:#333}
 .cmd .copy{position:absolute;top:5px;right:6px;padding:3px 8px;font-size:11px;border-radius:6px;border:1px solid #666;background:#222;color:#ddd}
 .cmd .copy:hover{background:#333}
 @media(max-width:760px){.llm-banner{flex-direction:column}.llm-banner-actions{flex-direction:row;flex-wrap:wrap}}
+
+.custom-chips:empty{display:none}
+.custom-chips{margin-top:8px}
+.chip.custom span{border-style:dashed;border-color:#7656ff;color:#5035d9}
+.chip.custom input:checked+span{background:#7656ff;border-color:#7656ff;border-style:solid;color:#fff}

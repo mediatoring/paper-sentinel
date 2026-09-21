@@ -8,7 +8,48 @@ ARXIV_CATEGORIES = [
     ("cs.NE", "Neural and Evolutionary Computing"),
     ("cs.RO", "Robotics"),
     ("stat.ML", "Machine Learning (Statistics)"),
+    ("cs.IR", "Information Retrieval"),
+    ("cs.HC", "Human-Computer Interaction"),
+    ("cs.MA", "Multiagent Systems"),
+    ("cs.SE", "Software Engineering"),
+    ("cs.DB", "Databases"),
+    ("cs.CR", "Cryptography and Security"),
+    ("cs.DC", "Distributed and Parallel Computing"),
+    ("cs.SD", "Sound"),
+    ("cs.CY", "Computers and Society"),
+    ("cs.GT", "Game Theory"),
+    ("cs.SI", "Social and Information Networks"),
+    ("eess.AS", "Audio and Speech Processing"),
+    ("eess.IV", "Image and Video Processing"),
+    ("q-bio.NC", "Neurons and Cognition"),
+    ("math.OC", "Optimization and Control"),
+    ("econ.EM", "Econometrics"),
 ]
+
+# arXiv category ids look like "cs.IR", "stat.ML", "q-bio.NC", "hep-th" or "math.OC".
+CATEGORY_PATTERN = r"^[a-z][a-z-]*(\.[A-Za-z][A-Za-z-]*)?$"
+
+
+def normalize_categories(values: list[str]) -> tuple[list[str], list[str]]:
+    """Return (valid, rejected) category ids, de-duplicated and in the given order."""
+    import re
+
+    valid: list[str] = []
+    rejected: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        code = str(raw or "").strip()
+        if not code:
+            continue
+        if not re.match(CATEGORY_PATTERN, code):
+            rejected.append(code)
+            continue
+        key = code.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        valid.append(code)
+    return valid, rejected
 
 SUGGESTED_TAGS = [
     "agents", "alignment", "attention", "benchmark", "continual learning",

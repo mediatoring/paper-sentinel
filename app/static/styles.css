@@ -84,7 +84,7 @@
 .snippet{font-size:13px;color:#555;background:#fbfbf6;border-left:3px solid #e6b800;padding:6px 10px;margin:8px 0;line-height:1.5}
 .snippet mark,mark{background:#fff1a8;color:inherit;padding:0 2px;border-radius:3px}
 .badge.user{background:#e3f6e8;color:#1f6b3e}
-.badge.score{background:#111;color:#fff}
+.badge.score{background:#111;color:#fff;white-space:nowrap}
 details.abstract{margin:10px 0;font-size:14px;line-height:1.55}
 details.abstract summary{cursor:pointer;font-weight:700;color:#444;user-select:none}
 details.abstract summary:hover{color:#5035d9}

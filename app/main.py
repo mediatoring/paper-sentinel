@@ -109,8 +109,24 @@ def settings_save(payload: SettingsPayload):
 
 
 @app.get("/api/papers")
-def papers(limit: int = Query(100, ge=1, le=500), saved: bool = False):
-    return db.list_papers(limit, saved_only=saved)
+def papers(limit: int = Query(100, ge=1, le=500), saved: bool = False, view: str = "all"):
+    if view not in db.VIEWS:
+        raise HTTPException(status_code=400, detail=f"view must be one of {', '.join(db.VIEWS)}")
+    return db.list_papers(limit, saved_only=saved, view=view)
+
+
+class ReactionPayload(BaseModel):
+    reaction: str | None = None
+
+
+@app.post("/api/papers/{arxiv_id}/reaction")
+def paper_set_reaction(arxiv_id: str, payload: ReactionPayload):
+    if payload.reaction is not None and payload.reaction not in db.REACTIONS:
+        raise HTTPException(status_code=400, detail="reaction must be like, dislike or null")
+    paper = db.set_reaction(arxiv_id, payload.reaction)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return paper
 
 
 class SavePayload(BaseModel):
@@ -129,7 +145,8 @@ def paper_set_saved(arxiv_id: str, payload: SavePayload):
 def status():
     state = db.get_state()
     state["schedule"] = db.get_settings().get("interval_minutes", 360)
-    state["saved_count"] = db.count_saved()
+    state["counts"] = db.counts()
+    state["saved_count"] = state["counts"]["saved"]
     return state
 
 

@@ -17,3 +17,16 @@
 .save-btn:disabled{opacity:.6;cursor:default}
 .paper.is-saved{border-color:#e6b800;box-shadow:inset 4px 0 0 #e6b800}
 .compact .paper .meta:first-of-type,.compact .paper h3{padding-right:140px}
+
+.paper .links{flex-wrap:wrap}
+.reactions{display:inline-flex;gap:6px;margin-left:auto}
+.react-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid #cfcfc9;background:#fff;color:#555}
+.react-btn:hover{border-color:#7656ff;color:#5035d9}
+.react-btn:disabled{opacity:.6;cursor:default}
+.react-btn.like.active{background:#e3f6e8;border-color:#2e9e5b;color:#1f6b3e}
+.react-btn.dislike.active{background:#f3f3f1;border-color:#999;color:#555}
+.paper.is-liked{border-color:#2e9e5b}
+.paper.is-disliked{opacity:.55;background:#fafaf8}
+.paper.is-disliked:hover{opacity:1}
+.paper.is-disliked h3{text-decoration:line-through;text-decoration-color:#bbb}
+.tab[data-view="disliked"].active{background:#555;border-color:#555}

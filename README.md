@@ -16,6 +16,7 @@ Default UI: **http://localhost:5792**
 - Short / medium / long AI summaries
 - Card or compact display
 - Read-later shelf: save any paper for later and switch between all papers and saved ones
+- Like / Not interested reactions stored per paper, with Liked and Not interested views
 - Local OpenAI-compatible LLM support
 - Graceful extractive fallback when the LLM is disabled or unavailable
 - Basic cross-reference hints against recently stored papers

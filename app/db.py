@@ -58,7 +58,9 @@ def init_db() -> None:
                 related_to TEXT,
                 created_at TEXT NOT NULL,
                 saved INTEGER NOT NULL DEFAULT 0,
-                saved_at TEXT
+                saved_at TEXT,
+                reaction TEXT,
+                reacted_at TEXT
             );
 
             CREATE TABLE IF NOT EXISTS state (
@@ -82,6 +84,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE papers ADD COLUMN saved INTEGER NOT NULL DEFAULT 0")
     if "saved_at" not in columns:
         conn.execute("ALTER TABLE papers ADD COLUMN saved_at TEXT")
+    if "reaction" not in columns:
+        conn.execute("ALTER TABLE papers ADD COLUMN reaction TEXT")
+    if "reacted_at" not in columns:
+        conn.execute("ALTER TABLE papers ADD COLUMN reacted_at TEXT")
 
 
 def get_settings() -> dict[str, Any]:
@@ -140,15 +146,53 @@ def _paper_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return d
 
 
-def list_papers(limit: int = 100, saved_only: bool = False) -> list[dict[str, Any]]:
-    where = "WHERE saved = 1" if saved_only else ""
-    order = "saved_at DESC" if saved_only else "COALESCE(published, created_at) DESC"
+REACTIONS = ("like", "dislike")
+VIEWS = {
+    "all": ("", "COALESCE(published, created_at) DESC"),
+    "saved": ("WHERE saved = 1", "saved_at DESC"),
+    "liked": ("WHERE reaction = 'like'", "reacted_at DESC"),
+    "disliked": ("WHERE reaction = 'dislike'", "reacted_at DESC"),
+}
+
+
+def list_papers(limit: int = 100, saved_only: bool = False, view: str = "all") -> list[dict[str, Any]]:
+    if saved_only:
+        view = "saved"
+    where, order = VIEWS.get(view, VIEWS["all"])
     with connect() as conn:
         rows = conn.execute(
             f"SELECT * FROM papers {where} ORDER BY {order} LIMIT ?",
             (limit,),
         ).fetchall()
     return [_paper_row_to_dict(r) for r in rows]
+
+
+def set_reaction(arxiv_id: str, reaction: str | None) -> dict[str, Any] | None:
+    if reaction not in REACTIONS and reaction is not None:
+        raise ValueError(f"reaction must be one of {REACTIONS} or null")
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE papers SET reaction = ?, reacted_at = ? WHERE arxiv_id = ?",
+            (reaction, _now() if reaction else None, arxiv_id),
+        )
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
+    return _paper_row_to_dict(row)
+
+
+def counts() -> dict[str, int]:
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS total,
+                   SUM(saved = 1) AS saved,
+                   SUM(reaction = 'like') AS liked,
+                   SUM(reaction = 'dislike') AS disliked
+            FROM papers
+            """
+        ).fetchone()
+    return {k: int(row[k] or 0) for k in ("total", "saved", "liked", "disliked")}
 
 
 def set_saved(arxiv_id: str, saved: bool) -> dict[str, Any] | None:
@@ -164,8 +208,7 @@ def set_saved(arxiv_id: str, saved: bool) -> dict[str, Any] | None:
 
 
 def count_saved() -> int:
-    with connect() as conn:
-        return int(conn.execute("SELECT COUNT(*) FROM papers WHERE saved = 1").fetchone()[0])
+    return counts()["saved"]
 
 
 def recent_context(limit: int = 20) -> list[dict[str, str]]:

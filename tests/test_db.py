@@ -61,3 +61,29 @@ def test_migration_adds_saved_columns(tmp_path, monkeypatch):
     papers = db.list_papers()
     assert papers[0]["arxiv_id"] == "old" and papers[0]["saved"] is False
     assert db.set_saved("old", True)["saved"] is True
+
+
+def test_reactions(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setenv("PAPER_SENTINEL_DATA", str(tmp_path))
+    import app.db as db
+    importlib.reload(db)
+    db.init_db()
+    db.insert_paper(_paper("a"), {})
+    db.insert_paper(_paper("b"), {})
+    assert db.list_papers()[0]["reaction"] is None
+    assert db.set_reaction("missing", "like") is None
+    with pytest.raises(ValueError):
+        db.set_reaction("a", "meh")
+
+    liked = db.set_reaction("a", "like")
+    assert liked["reaction"] == "like" and liked["reacted_at"]
+    db.set_reaction("b", "dislike")
+    assert [p["arxiv_id"] for p in db.list_papers(view="liked")] == ["a"]
+    assert [p["arxiv_id"] for p in db.list_papers(view="disliked")] == ["b"]
+    assert db.counts() == {"total": 2, "saved": 0, "liked": 1, "disliked": 1}
+
+    assert db.set_reaction("a", None)["reaction"] is None
+    assert db.list_papers(view="liked") == []
+    assert db.counts()["liked"] == 0
+    assert len(db.list_papers(view="all")) == 2

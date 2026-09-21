@@ -22,6 +22,8 @@
     <nav class="tabs" aria-label="Paper lists">
       <button type="button" class="tab active" data-view="all">All papers</button>
       <button type="button" class="tab" data-view="saved">Read later <span id="savedCount" class="count">0</span></button>
+      <button type="button" class="tab" data-view="liked">Liked <span id="likedCount" class="count">0</span></button>
+      <button type="button" class="tab" data-view="disliked">Not interested <span id="dislikedCount" class="count">0</span></button>
     </nav>
 
     <section class="statusbar">
@@ -36,6 +38,12 @@
     </section>
     <section id="emptySaved" class="empty hidden">
       Your read-later shelf is empty. Use <strong>Read later</strong> on any paper to keep it here.
+    </section>
+    <section id="emptyLiked" class="empty hidden">
+      Nothing liked yet. Use the thumbs-up on a paper to record that it was useful.
+    </section>
+    <section id="emptyDisliked" class="empty hidden">
+      Nothing marked as not interested yet. Use the thumbs-down on a paper to record it.
     </section>
 
     <section id="papers" class="paper-grid"></section>

@@ -101,3 +101,25 @@ def test_fts_backfill_on_existing_database(tmp_path, monkeypatch):
     db.init_db()
     assert [h["arxiv_id"] for h in db.search_text("experts")] == ["old"]
     assert db.get_paper("old")["user_tags"] == []
+
+
+def test_tag_filter_and_counts(db):
+    db.insert_paper(_paper("3", "Agents plan", "Planning agents."), {})
+    with db.connect() as conn:
+        conn.execute("UPDATE papers SET matched_tags = ? WHERE arxiv_id = '1'", ('["agents", "retrieval"]',))
+        conn.execute("UPDATE papers SET matched_tags = ? WHERE arxiv_id = '3'", ('["Agents"]',))
+        for a in ("1", "2", "3"):
+            db._reindex(conn, a)
+    db.set_notes("2", "", ["thesis"])
+    assert {p["arxiv_id"] for p in db.list_papers(tags=["agents"])} == {"1", "3"}
+    assert {p["arxiv_id"] for p in db.list_papers(tags=["AGENTS", "thesis"])} == {"1", "2", "3"}
+    assert [p["arxiv_id"] for p in db.list_papers(tags=["thesis"])] == ["2"]
+    assert db.list_papers(tags=["nope"]) == []
+    counts = db.tag_counts()
+    assert counts["matched"][0] == {"tag": "Agents", "count": 2} or counts["matched"][0]["count"] == 2
+    assert {c["tag"].lower(): c["count"] for c in counts["matched"]} == {"agents": 2, "retrieval": 1}
+    assert counts["user"] == [{"tag": "thesis", "count": 1}]
+    db.set_saved("3", True)
+    assert {c["tag"].lower() for c in db.tag_counts("saved")["matched"]} == {"agents"}
+    assert [h["arxiv_id"] for h in db.search_text("agents", tags=["retrieval"])] == ["1"]
+    assert db.search_text("agents", tags=["thesis"]) == []

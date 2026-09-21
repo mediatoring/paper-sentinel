@@ -1,11 +1,14 @@
 const $ = (id) => document.getElementById(id);
 let settings = null;
 let lastKnownCount = 0;
-let currentView = 'all';
+let currentView = 'inbox';
 let currentSort = 'newest';
 let currentQuery = '';
 let knownTags = [];
-const VIEWS=['all','saved','liked','disliked'];
+let activeTags = [];
+const expandedIds = new Set();
+try { activeTags=JSON.parse(localStorage.getItem('ps.tags')||'[]'); if(!Array.isArray(activeTags)) activeTags=[]; } catch { activeTags=[]; }
+const VIEWS=['inbox','saved','liked','disliked','all'];
 const LAYOUTS=['cards2','cards3','table'];
 try { const v=localStorage.getItem('ps.view'); if(VIEWS.includes(v)) currentView=v; } catch {}
 try { const s=localStorage.getItem('ps.sort'); if(s==='score'||s==='newest') currentSort=s; } catch {}
@@ -124,6 +127,21 @@ function saveButton(id,saved){
   return `<button type="button" class="save-btn${saved?' saved':''}" data-id="${esc(id)}" data-saved="${saved?1:0}" title="${label}" aria-label="${label}" aria-pressed="${saved?'true':'false'}">${BOOKMARK}<span>${saved?'Saved':'Read later'}</span></button>`;
 }
 
+const I={
+  file:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6 2h8l5 5v15H6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 2v5h5M9 13h6M9 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  download:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  similar:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="9" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="15" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+  note:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13 7l4 4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+  x:'<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  chev:'<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+};
+const CHECK='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function readButton(id,read,compact=false){
+  const label=read?'Mark as unread':'Mark as read (removes it from the inbox)';
+  return `<button type="button" class="read-btn${read?' active':''}${compact?' compact':''}" data-id="${esc(id)}" data-read="${read?1:0}" title="${label}" aria-label="${label}" aria-pressed="${read?'true':'false'}">${CHECK}<span>${read?'Read':'Read'}</span></button>`;
+}
+
 function reactionBar(id,reaction,compact=false){
   const up=reaction==='like',down=reaction==='dislike';
   return `<div class="reactions${compact?' compact':''}" data-id="${esc(id)}">
@@ -172,12 +190,12 @@ function notesPreview(p){
 
 function toolsBlock(p){
   const pdf=p.has_pdf
-    ?`<a class="tool-btn pdf-ok" href="/library/${encodeURIComponent(p.arxiv_id)}.pdf" target="_blank" rel="noreferrer" title="Open the PDF stored in your library${p.pdf_size?` (${sizeText(p.pdf_size)})`:''}">📄 PDF in library</a><button type="button" class="tool-btn pdf-remove" data-id="${esc(p.arxiv_id)}" title="Remove PDF from library">✕</button>`
-    :`<button type="button" class="tool-btn pdf-btn" data-id="${esc(p.arxiv_id)}" title="Download the PDF into data/library and index its text for search">⬇ Save PDF</button>`;
+    ?`<a class="tool-btn pdf-ok" href="/library/${encodeURIComponent(p.arxiv_id)}.pdf" target="_blank" rel="noreferrer" title="Open the PDF stored in your library${p.pdf_size?` (${sizeText(p.pdf_size)})`:''}">${I.file}<span>PDF in library</span></a><button type="button" class="tool-btn pdf-remove" data-id="${esc(p.arxiv_id)}" title="Remove PDF from library" aria-label="Remove PDF from library">${I.x}</button>`
+    :`<button type="button" class="tool-btn pdf-btn" data-id="${esc(p.arxiv_id)}" title="Download the PDF into data/library and index its text for search">${I.download}<span>Save PDF</span></button>`;
   return `<div class="tools">
     ${pdf}
-    <button type="button" class="tool-btn similar-btn" data-id="${esc(p.arxiv_id)}" title="Find similar papers by meaning">≈ Similar</button>
-    <button type="button" class="tool-btn notes-btn${p.notes||p.user_tags?.length?' has-notes':''}" data-id="${esc(p.arxiv_id)}" title="Your notes and tags">✎ Notes${p.user_tags?.length?` (${p.user_tags.length})`:''}</button>
+    <button type="button" class="tool-btn similar-btn" data-id="${esc(p.arxiv_id)}" title="Find similar papers by meaning">${I.similar}<span>Similar</span></button>
+    <button type="button" class="tool-btn notes-btn${p.notes||p.user_tags?.length?' has-notes':''}" data-id="${esc(p.arxiv_id)}" title="Your notes and tags">${I.note}<span>Notes${p.user_tags?.length?` (${p.user_tags.length})`:''}</span></button>
   </div>
   <div class="panel similar-panel hidden"></div>
   <div class="panel notes-panel hidden">
@@ -194,7 +212,7 @@ function renderPaper(p){
   return `<article class="${paperClasses(p,'paper')}" data-id="${esc(p.arxiv_id)}">
     <div class="card-head">
       <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
-      <div class="card-actions">${reactionBar(p.arxiv_id,p.reaction,true)}${saveButton(p.arxiv_id,p.saved)}</div>
+      <div class="card-actions">${reactionBar(p.arxiv_id,p.reaction,true)}${readButton(p.arxiv_id,!!p.read_at,true)}${saveButton(p.arxiv_id,p.saved)}</div>
     </div>
     <h3>${esc(p.title)}</h3><div class="meta">${esc(authors)}</div><div class="tags">${tagBadges(p)}</div>
     ${snippetBlock(p)}
@@ -206,53 +224,93 @@ function renderPaper(p){
   </article>`;
 }
 
-let expandAll=false;
-try { expandAll=localStorage.getItem('ps.expand')==='1'; } catch {}
+// null = automatic (unhandled papers open, handled ones collapsed to their title); true/false = forced by the toggle
+let expandAll=null;
 
 function renderListItem(p){
   const authors=(p.authors||[]).join(', ');
   const hasAi=!!(p.summary||p.why_relevant||p.key_contribution||p.limitations||p.related_to);
-  return `<article class="${paperClasses(p,'paper list-item')}" data-id="${esc(p.arxiv_id)}">
-    <div class="list-main">
-      <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
-      <h3>${esc(p.title)}</h3>
-      <div class="meta authors">${esc(authors)}</div>
-      <div class="tags">${tagBadges(p)}</div>
-      ${snippetBlock(p)}
-      <p class="abstract-full">${esc(p.abstract)}</p>
-      ${hasAi?`<details class="ai-summary"${expandAll?' open':''}><summary>AI summary</summary>${llmBlock(p)}</details>`:''}
-      ${notesPreview(p)}
+  const handled=!!(p.saved||p.reaction||p.read_at);
+  const open=expandedIds.has(p.arxiv_id)||(expandAll===null?!handled:expandAll);
+  return `<article class="${paperClasses(p,'paper list-item')}${open?' open':''}" data-id="${esc(p.arxiv_id)}">
+    <div class="list-head">
+      <button type="button" class="list-toggle" aria-expanded="${open}" title="${open?'Collapse':'Expand'}">
+        <span class="chev" aria-hidden="true">${I.chev}</span>
+        <span class="list-title">${esc(p.title)}</span>
+      </button>
+      <div class="list-head-meta">
+        ${p.reaction==='like'?`<span class="mini icon ok" title="Liked">${THUMB_UP}</span>`:''}${p.reaction==='dislike'?`<span class="mini icon" title="Not interested">${THUMB_DOWN}</span>`:''}${p.saved?`<span class="mini icon warn" title="Read later">${BOOKMARK}</span>`:''}${p.has_pdf?`<span class="mini icon" title="PDF in library">${I.file}</span>`:''}${p.read_at?`<span class="mini icon" title="Read">${CHECK}</span>`:''}
+        ${p.score!==null&&p.score!==undefined?`<span class="badge score tip small" tabindex="0" data-tip="${esc(MATCH_TIP)}">${pct(p.score)}</span>`:''}
+        <span class="meta">${esc(dateText(p.published).split(',')[0])}</span>
+      </div>
     </div>
-    <aside class="list-side">
-      ${saveButton(p.arxiv_id,p.saved)}
-      ${reactionBar(p.arxiv_id,p.reaction)}
-      <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
-    </aside>
-    <div class="list-foot">${toolsBlock(p)}</div>
+    <div class="list-body${open?'':' hidden'}">
+      <div class="list-main">
+        <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
+        <div class="meta authors">${esc(authors)}</div>
+        <div class="tags">${tagBadges(p)}</div>
+        ${snippetBlock(p)}
+        <p class="abstract-full">${esc(p.abstract)}</p>
+        ${hasAi?`<details class="ai-summary"><summary>AI summary</summary>${llmBlock(p)}</details>`:''}
+        ${notesPreview(p)}
+      </div>
+      <aside class="list-side">
+        ${saveButton(p.arxiv_id,p.saved)}
+        ${reactionBar(p.arxiv_id,p.reaction)}
+        ${readButton(p.arxiv_id,!!p.read_at)}
+        <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
+      </aside>
+      <div class="list-foot">${toolsBlock(p)}</div>
+    </div>
   </article>`;
 }
 
+function toggleListItem(btn){
+  const card=btn.closest('.list-item'),body=card.querySelector('.list-body'),id=card.dataset.id;
+  const open=body.classList.toggle('hidden');
+  card.classList.toggle('open',!open);btn.setAttribute('aria-expanded',String(!open));btn.title=open?'Expand':'Collapse';
+  if(open)expandedIds.delete(id);else expandedIds.add(id);
+}
+
 function renderList(papers){
-  return `<div class="list-toolbar"><button type="button" id="expandAllBtn" class="tool-btn">${expandAll?'Collapse AI summaries':'Expand AI summaries'}</button></div>${papers.map(renderListItem).join('')}`;
+  return papers.map(renderListItem).join('');
+}
+
+function updateListBar(papers){
+  const mode=layout();
+  $('listBar').classList.toggle('hidden',papers.length===0);
+  $('listInfo').textContent=`${papers.length} paper${papers.length===1?'':'s'}${mode==='table'?' · click a title to collapse or expand':''}${currentView==='inbox'?' · any action moves a paper out of the inbox':''}`;
+  const anyClosed=[...document.querySelectorAll('#papers .list-item')].some(c=>!c.classList.contains('open'));
+  $('expandAllBtn').classList.toggle('hidden',mode!=='table');$('expandAllBtn').textContent=anyClosed?'Expand all':'Collapse all';
+  $('markAllRead').classList.toggle('hidden',currentView!=='inbox'||!!currentQuery);
 }
 
 function toggleExpandAll(){
-  expandAll=!expandAll;try{localStorage.setItem('ps.expand',expandAll?'1':'0')}catch{}
-  document.querySelectorAll('#papers details.ai-summary').forEach(d=>d.open=expandAll);
-  const b=$('expandAllBtn');if(b)b.textContent=expandAll?'Collapse AI summaries':'Expand AI summaries';
+  const anyClosed=[...document.querySelectorAll('#papers .list-item')].some(c=>!c.classList.contains('open'));
+  expandAll=anyClosed;
+  if(!expandAll)expandedIds.clear();
+  document.querySelectorAll('#papers .list-item').forEach(card=>{
+    card.querySelector('.list-body').classList.toggle('hidden',!expandAll);card.classList.toggle('open',expandAll);
+    card.querySelector('.list-toggle').setAttribute('aria-expanded',String(expandAll));
+    card.querySelectorAll('details.ai-summary').forEach(d=>d.open=expandAll);
+  });
+  const b=$('expandAllBtn');if(b)b.textContent=expandAll?'Collapse all':'Expand all';
+  expandAll=null;
 }
 
 function updateCounts(c){
   if(!c)return;
   $('savedCount').textContent=c.saved;$('likedCount').textContent=c.liked;$('dislikedCount').textContent=c.disliked;
+  if(c.inbox!==undefined)$('inboxCount').textContent=c.inbox;if(c.total!==undefined)$('totalCount').textContent=c.total;
 }
+function bumpInbox(delta){const el=$('inboxCount');el.textContent=Math.max(0,Number(el.textContent||0)+delta);}
 
 /* ------------------------------------------------------------------ list loading */
 
 async function fetchList(){
   if(currentQuery){
     const mode=$('searchMode').value;
-    const data=await fetch(`/api/search?q=${encodeURIComponent(currentQuery)}&mode=${mode}&view=${currentView}&limit=100`).then(r=>r.json());
+    const data=await fetch(`/api/search?q=${encodeURIComponent(currentQuery)}&mode=${mode}&view=${currentView}&limit=100${tagParam()}`).then(r=>r.json());
     const note=$('searchNote');
     if(data.results.length===0)note.textContent=`No results for “${currentQuery}”.`;
     else if((mode==='semantic'||mode==='hybrid')&&!data.semantic_available)note.textContent=`${data.results.length} result(s), text only – embeddings unavailable (check the LLM server in Settings).`;
@@ -261,7 +319,43 @@ async function fetchList(){
     return data.results;
   }
   $('searchNote').classList.add('hidden');
-  return fetch(`/api/papers?limit=200&view=${currentView}&sort=${currentSort}`).then(r=>r.json());
+  return fetch(`/api/papers?limit=200&view=${currentView}&sort=${currentSort}${tagParam()}`).then(r=>r.json());
+}
+
+function tagParam(){return activeTags.length?`&tags=${encodeURIComponent(activeTags.join(','))}`:'';}
+
+/* ------------------------------------------------------------------ tag filter chips */
+
+let tagCountsKey='';
+async function loadTagChips(force=false){
+  const key=currentView;
+  const data=await fetch(`/api/tag-counts?view=${key}`).then(r=>r.json()).catch(()=>null);
+  if(!data)return;
+  const sig=JSON.stringify([key,data]);
+  if(!force&&sig===tagCountsKey)return;
+  tagCountsKey=sig;
+  const known=new Set([...data.matched,...data.user].map(t=>t.tag.toLowerCase()));
+  activeTags=activeTags.filter(t=>known.has(t.toLowerCase()));
+  const chip=(t,cls)=>`<label class="chip ${cls}${activeTags.some(a=>a.toLowerCase()===t.tag.toLowerCase())?' on':''}"><input type="checkbox" name="tag_filter" value="${esc(t.tag)}"${activeTags.some(a=>a.toLowerCase()===t.tag.toLowerCase())?' checked':''}><span>${esc(t.tag)} <em>${t.count}</em></span></label>`;
+  $('tagChips').innerHTML=data.matched.map(t=>chip(t,'radar')).join('')+data.user.map(t=>chip(t,'mine')).join('');
+  $('tagFilter').classList.toggle('hidden',!data.matched.length&&!data.user.length);
+  $('tagClear').classList.toggle('hidden',!activeTags.length);
+}
+
+function onTagChipChange(e){
+  const input=e.target;if(input.name!=='tag_filter')return;
+  const v=input.value;
+  activeTags=input.checked?[...activeTags.filter(t=>t.toLowerCase()!==v.toLowerCase()),v]:activeTags.filter(t=>t.toLowerCase()!==v.toLowerCase());
+  try{localStorage.setItem('ps.tags',JSON.stringify(activeTags))}catch{}
+  input.closest('.chip').classList.toggle('on',input.checked);
+  $('tagClear').classList.toggle('hidden',!activeTags.length);
+  loadPapers();
+}
+
+function clearTags(){
+  activeTags=[];try{localStorage.setItem('ps.tags','[]')}catch{}
+  document.querySelectorAll('input[name="tag_filter"]').forEach(i=>{i.checked=false;i.closest('.chip').classList.remove('on');});
+  $('tagClear').classList.add('hidden');loadPapers();
 }
 
 async function loadPapers(){
@@ -270,10 +364,12 @@ async function loadPapers(){
   const mode=layout();
   $('papers').className=mode==='table'?'paper-list':`paper-grid ${mode}`;
   $('papers').innerHTML=mode==='table'?renderList(papers):papers.map(renderPaper).join('');
+  updateListBar(papers);
   document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
-  const empty={all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked'};
-  for(const [k,id] of Object.entries(empty)) $(id).classList.toggle('hidden',!!currentQuery||k!==view||papers.length!==0);
-  if(view!=='all'||currentQuery){return;}
+  const empty={inbox:'emptyInbox',all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked'};
+  for(const [k,id] of Object.entries(empty)) $(id).classList.toggle('hidden',!!currentQuery||activeTags.length>0||k!==view||papers.length!==0);
+  if(activeTags.length&&!currentQuery&&!papers.length)$('papers').innerHTML=`<div class="empty">No papers tagged ${activeTags.map(t=>`<span class="badge">${esc(t)}</span>`).join(' ')} in this view.</div>`;
+  if(view!=='inbox'||currentQuery||activeTags.length){return;}
   if(lastKnownCount && papers.length>lastKnownCount && settings?.browser_notifications && 'Notification' in window && Notification.permission==='granted'){
     new Notification('Paper Sentinel',{body:`${papers.length-lastKnownCount} new relevant paper(s)`});
   }
@@ -282,13 +378,19 @@ async function loadPapers(){
 
 function replaceCard(card,paper){
   const aiOpen=card.querySelector('details.ai-summary')?.open;
+  if(card.classList.contains('list-item')&&card.classList.contains('open'))expandedIds.add(paper.arxiv_id);
   card.outerHTML=layout()==='table'?renderListItem(paper):renderPaper(paper);
   if(aiOpen){const d=$('papers').querySelector(`.paper[data-id="${CSS.escape(paper.arxiv_id)}"] details.ai-summary`);if(d)d.open=true;}
 }
 
 function removeCard(card,emptyId){
-  card.remove();
-  const left=$('papers').querySelector('.paper');if(!left){$('papers').innerHTML='';if(!currentQuery)$(emptyId).classList.remove('hidden');}
+  card.classList.add('leaving');
+  setTimeout(()=>{
+    card.remove();
+    const left=$('papers').querySelectorAll('.paper');
+    updateListBar([...left]);
+    if(!left.length){$('papers').innerHTML='';if(!currentQuery)$(emptyId).classList.remove('hidden');}
+  },160);
 }
 
 function cardOf(el){return el.closest('.paper');}
@@ -305,7 +407,27 @@ async function toggleSaved(btn){
   toast(saved?(settings?.library_auto_download&&!paper.has_pdf?'Saved for later · fetching PDF':'Saved for later'):'Removed from shelf');
   const count=$('savedCount');count.textContent=Math.max(0,Number(count.textContent||0)+(saved?1:-1));
   if(currentView==='saved'&&!saved){removeCard(card,'emptySaved');return;}
+  if(currentView==='inbox'&&saved){bumpInbox(-1);removeCard(card,'emptyInbox');return;}
   replaceCard(card,paper);
+}
+
+async function toggleRead(btn){
+  const id=btn.dataset.id,read=btn.dataset.read!=='1',card=itemOf(btn);
+  card.querySelectorAll('.read-btn').forEach(b=>b.disabled=true);
+  const resp=await postJSON(`/api/papers/${encodeURIComponent(id)}/read`,{read});
+  if(!resp.ok){card.querySelectorAll('.read-btn').forEach(b=>b.disabled=false);toast('Could not update');return;}
+  const paper=await resp.json();
+  toast(read?'Marked as read':'Marked as unread');
+  if(currentView==='inbox'&&read){bumpInbox(-1);removeCard(card,'emptyInbox');return;}
+  replaceCard(card,paper);
+}
+
+async function markAllRead(){
+  const n=Number($('inboxCount').textContent||0);
+  if(!confirm(`Mark ${activeTags.length?'the filtered':'all'} inbox papers as read? They stay available in the All tab.`))return;
+  const resp=await postJSON('/api/papers/read-all',{tags:activeTags});
+  if(!resp.ok){toast('Could not mark as read');return;}
+  const data=await resp.json();toast(`${data.marked} paper(s) marked as read`);await loadStatus();await loadPapers();
 }
 
 async function setReaction(btn){
@@ -321,14 +443,15 @@ async function setReaction(btn){
   if(current==='like')c.liked--;if(current==='dislike')c.disliked--;if(reaction==='like')c.liked++;if(reaction==='dislike')c.disliked++;
   updateCounts(c);
   if((currentView==='liked'&&reaction!=='like')||(currentView==='disliked'&&reaction!=='dislike')){removeCard(card,currentView==='liked'?'emptyLiked':'emptyDisliked');return;}
+  if(currentView==='inbox'&&reaction){bumpInbox(-1);removeCard(card,'emptyInbox');return;}
   replaceCard(card,paper);
 }
 
 async function downloadPdf(btn){
   const id=btn.dataset.id,card=itemOf(btn);
-  btn.disabled=true;btn.textContent='⏳ Downloading…';
+  btn.disabled=true;btn.innerHTML=`${I.clock}<span>Downloading…</span>`;
   const resp=await postJSON(`/api/papers/${encodeURIComponent(id)}/pdf`);
-  if(!resp.ok){btn.disabled=false;btn.textContent='⬇ Save PDF';toast((await resp.json()).detail||'PDF download failed');return;}
+  if(!resp.ok){btn.disabled=false;btn.innerHTML=`${I.download}<span>Save PDF</span>`;toast((await resp.json()).detail||'PDF download failed');return;}
   toast('PDF saved to library and indexed for search');
   replaceCard(card,await resp.json());
 }
@@ -349,7 +472,7 @@ async function showSimilar(btn){
   if(!resp.ok){panel.innerHTML=`<div class="status-error">${esc((await resp.json()).detail||'Similar papers unavailable')}</div>`;return;}
   const data=await resp.json();
   if(!data.results.length){panel.innerHTML='<div class="muted">No other embedded papers yet. Run a scan or rebuild embeddings in Settings.</div>';return;}
-  panel.innerHTML=`<div class="panel-title">Similar papers</div><ul class="similar-list">${data.results.map(r=>`<li><span class="badge score">${pct(r.similarity)}</span> <a href="${esc(r.abs_url)}" target="_blank" rel="noreferrer">${esc(r.title)}</a>${r.saved?' <span class="mini">★ saved</span>':''}${r.reaction==='like'?' <span class="mini">👍</span>':''}</li>`).join('')}</ul>`;
+  panel.innerHTML=`<div class="panel-title">Similar papers</div><ul class="similar-list">${data.results.map(r=>`<li><span class="badge score">${pct(r.similarity)}</span> <a href="${esc(r.abs_url)}" target="_blank" rel="noreferrer">${esc(r.title)}</a>${r.saved?` <span class="mini icon warn" title="Read later">${BOOKMARK}</span>`:''}${r.reaction==='like'?` <span class="mini icon ok" title="Liked">${THUMB_UP}</span>`:''}</li>`).join('')}</ul>`;
 }
 
 async function toggleNotes(btn){
@@ -385,7 +508,7 @@ async function setLayout(mode){
 function setView(view){
   currentView=view;try{localStorage.setItem('ps.view',view)}catch{}
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));
-  loadPapers();
+  loadTagChips();loadPapers();
 }
 
 function setSort(sort){
@@ -478,7 +601,8 @@ async function loadStatus(){
   if(s.library)$('libraryStat').textContent=`Library: ${s.library.embedded}/${s.library.total} embedded · ${s.library.pdfs} PDF${s.library.pdfs===1?'':'s'}`;
   const err=$('scanError');err.textContent=status==='error'&&s.last_error?`Last error: ${s.last_error}`:'';err.classList.toggle('hidden',!err.textContent);
   $('scanBtn').disabled=status==='running';
-  if(status!=='running'&&currentView==='all'&&!currentQuery&&!document.querySelector('.notes-panel:not(.hidden)')) await loadPapers();
+  if(status!=='running'&&currentView==='inbox'&&!currentQuery&&!document.querySelector('.notes-panel:not(.hidden)')&&!document.querySelector('.paper.leaving')) await loadPapers();
+  loadTagChips();
 }
 
 async function scanNow(){
@@ -504,7 +628,8 @@ $('papers').addEventListener('click',e=>{
   let b;
   if((b=hit('.save-btn')))return toggleSaved(b);
   if((b=hit('.react-btn')))return setReaction(b);
-  if((b=hit('#expandAllBtn')))return toggleExpandAll();
+  if((b=hit('.list-toggle')))return toggleListItem(b);
+  if((b=hit('.read-btn')))return toggleRead(b);
   if((b=hit('.pdf-btn')))return downloadPdf(b);
   if((b=hit('.pdf-remove')))return removePdf(b);
   if((b=hit('.similar-btn')))return showSimilar(b);
@@ -515,6 +640,8 @@ $('papers').addEventListener('click',e=>{
 document.querySelectorAll('.layout-btn').forEach(b=>b.addEventListener('click',()=>setLayout(b.dataset.layout)));
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setView(t.dataset.view)));
 document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===currentView));
+$('expandAllBtn').addEventListener('click',toggleExpandAll);$('markAllRead').addEventListener('click',markAllRead);
+$('tagChips').addEventListener('change',onTagChipChange);$('tagClear').addEventListener('click',clearTags);
 $('searchForm').addEventListener('submit',runSearch);
 $('searchClear').addEventListener('click',clearSearch);
 $('searchMode').addEventListener('change',()=>{if(currentQuery)loadPapers();});
@@ -522,5 +649,5 @@ $('searchInput').addEventListener('keydown',e=>{if(e.key==='Escape')clearSearch(
 $('sortMode').value=currentSort;$('sortMode').addEventListener('change',e=>setSort(e.target.value));
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();$('searchInput').focus();}});
 
-(async()=>{await loadSettings();await loadPapers();await loadStatus();setInterval(loadStatus,5000);
+(async()=>{await loadSettings();await loadTagChips(true);await loadPapers();await loadStatus();setInterval(loadStatus,5000);
   if(location.hash==='#settings'){$('settingsDialog').showModal();}})();

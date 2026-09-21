@@ -128,13 +128,25 @@ def settings_view_mode(payload: ViewModePayload):
     return db.save_settings(settings)
 
 
+def _tag_list(tags: str | None) -> list[str]:
+    return [t.strip() for t in (tags or "").split(",") if t.strip()][:20]
+
+
 @app.get("/api/papers")
-def papers(limit: int = Query(100, ge=1, le=500), saved: bool = False, view: str = "all", sort: str = "newest"):
+def papers(limit: int = Query(100, ge=1, le=500), saved: bool = False, view: str = "all", sort: str = "newest",
+           tags: str | None = Query(None, max_length=2000)):
     if view not in db.VIEWS:
         raise HTTPException(status_code=400, detail=f"view must be one of {', '.join(db.VIEWS)}")
     if sort not in db.SORTS:
         raise HTTPException(status_code=400, detail=f"sort must be one of {', '.join(db.SORTS)}")
-    return db.list_papers(limit, saved_only=saved, view=view, sort=sort)
+    return db.list_papers(limit, saved_only=saved, view=view, sort=sort, tags=_tag_list(tags))
+
+
+@app.get("/api/tag-counts")
+def tag_counts(view: str = "all"):
+    if view not in db.VIEWS:
+        raise HTTPException(status_code=400, detail=f"view must be one of {', '.join(db.VIEWS)}")
+    return db.tag_counts(view)
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +175,10 @@ def _rrf(*lists: list[dict], k: int = 60) -> list[dict]:
 
 
 @app.get("/api/search")
-def search(q: str = Query("", max_length=500), mode: str = "hybrid", view: str = "all", limit: int = Query(50, ge=1, le=200)):
+def search(q: str = Query("", max_length=500), mode: str = "hybrid", view: str = "all", limit: int = Query(50, ge=1, le=200),
+           tags: str | None = Query(None, max_length=2000)):
     q = q.strip()
+    tag_filter = _tag_list(tags)
     if not q:
         return {"query": q, "mode": mode, "results": [], "semantic_available": False}
     if mode not in SEARCH_MODES:
@@ -172,14 +186,14 @@ def search(q: str = Query("", max_length=500), mode: str = "hybrid", view: str =
     if view not in db.VIEWS:
         raise HTTPException(status_code=400, detail=f"view must be one of {', '.join(db.VIEWS)}")
     settings = db.get_settings()
-    text_results = db.search_text(q, limit, view) if mode in ("text", "hybrid") else []
+    text_results = db.search_text(q, limit, view, tag_filter) if mode in ("text", "hybrid") else []
     semantic_results: list[dict] = []
     semantic_available = False
     if mode in ("semantic", "hybrid"):
         vectors, model = embeddings.embed_texts(settings, [q])
         if vectors:
             semantic_available = True
-            semantic_results = db.rank_by_vector(vectors[0], limit, model=model, view=view)
+            semantic_results = db.rank_by_vector(vectors[0], limit, model=model, view=view, tags=tag_filter)
     if mode == "text":
         results = text_results
     elif mode == "semantic":
@@ -288,6 +302,27 @@ def paper_set_reaction(arxiv_id: str, payload: ReactionPayload, background_tasks
     if payload.reaction == "like" and settings.get("library_auto_download") and not paper.get("has_pdf"):
         background_tasks.add_task(_auto_download, arxiv_id)
     return paper
+
+
+class ReadPayload(BaseModel):
+    read: bool = True
+
+
+@app.post("/api/papers/{arxiv_id}/read")
+def paper_set_read(arxiv_id: str, payload: ReadPayload):
+    paper = db.set_read(arxiv_id, payload.read)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return paper
+
+
+class ReadAllPayload(BaseModel):
+    tags: list[str] = []
+
+
+@app.post("/api/papers/read-all")
+def papers_read_all(payload: ReadAllPayload):
+    return {"marked": db.mark_all_read(payload.tags[:20])}
 
 
 class SavePayload(BaseModel):

@@ -20,16 +20,23 @@
 
   <main>
     <nav class="tabs" aria-label="Paper lists">
-      <button type="button" class="tab active" data-view="all">All papers</button>
+      <button type="button" class="tab active" data-view="inbox" title="New papers you have not handled yet. Any action (Read later, Like, Not interested, Read) moves a paper out of the inbox.">Inbox <span id="inboxCount" class="count">0</span></button>
       <button type="button" class="tab" data-view="saved">Read later <span id="savedCount" class="count">0</span></button>
       <button type="button" class="tab" data-view="liked">Liked <span id="likedCount" class="count">0</span></button>
       <button type="button" class="tab" data-view="disliked">Not interested <span id="dislikedCount" class="count">0</span></button>
+      <button type="button" class="tab" data-view="all" title="Everything stored, including papers you already handled">All <span id="totalCount" class="count">0</span></button>
       <div class="layout-switch" role="group" aria-label="Layout">
         <button type="button" class="layout-btn" data-layout="cards2" title="2 cards per row" aria-label="2 cards per row"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="1.5" fill="currentColor"/><rect x="13" y="4" width="8" height="16" rx="1.5" fill="currentColor"/></svg></button>
         <button type="button" class="layout-btn" data-layout="cards3" title="3 cards per row" aria-label="3 cards per row"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="2" y="4" width="5.5" height="16" rx="1.5" fill="currentColor"/><rect x="9.25" y="4" width="5.5" height="16" rx="1.5" fill="currentColor"/><rect x="16.5" y="4" width="5.5" height="16" rx="1.5" fill="currentColor"/></svg></button>
         <button type="button" class="layout-btn" data-layout="table" title="List (one column)" aria-label="List (one column)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="5" width="18" height="3" rx="1" fill="currentColor"/><rect x="3" y="10.5" width="18" height="3" rx="1" fill="currentColor"/><rect x="3" y="16" width="18" height="3" rx="1" fill="currentColor"/></svg></button>
       </div>
     </nav>
+
+    <section id="tagFilter" class="tag-filter hidden" aria-label="Filter by tag">
+      <span class="tag-filter-label">Tags</span>
+      <div id="tagChips" class="chips tag-chips"></div>
+      <button type="button" id="tagClear" class="linkish hidden">Clear</button>
+    </section>
 
     <section class="toolbar">
       <form id="searchForm" class="search" role="search">
@@ -77,6 +84,17 @@
       </div>
     </section>
 
+    <div id="listBar" class="list-toolbar hidden">
+      <span id="listInfo" class="muted"></span>
+      <div class="list-toolbar-actions">
+        <button type="button" id="markAllRead" class="tool-btn hidden" title="Mark every paper in the inbox (with the current tag filter) as read"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M3 13l4 4L14 9M10 17l1 1 10-10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Mark all as read</span></button>
+        <button type="button" id="expandAllBtn" class="tool-btn hidden">Expand all</button>
+      </div>
+    </div>
+
+    <section id="emptyInbox" class="empty hidden">
+      Inbox zero. Every new paper has been handled; new ones appear here after the next scan.
+    </section>
     <section id="emptyState" class="empty hidden">
       No matching papers stored yet. Configure your radar and run the first scan.
     </section>

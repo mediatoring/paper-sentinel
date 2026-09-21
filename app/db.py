@@ -72,7 +72,8 @@ def init_db() -> None:
                 pdf_fetched_at TEXT,
                 embedding BLOB,
                 embedding_model TEXT,
-                score REAL
+                score REAL,
+                read_at TEXT
             );
 
             CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(
@@ -115,6 +116,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         ("embedding", "BLOB"),
         ("embedding_model", "TEXT"),
         ("score", "REAL"),
+        ("read_at", "TEXT"),
     ):
         if name not in columns:
             conn.execute(f"ALTER TABLE papers ADD COLUMN {name} {decl}")
@@ -223,6 +225,7 @@ def get_paper(arxiv_id: str) -> dict[str, Any] | None:
 
 REACTIONS = ("like", "dislike")
 VIEWS = {
+    "inbox": ("WHERE reaction IS NULL AND saved = 0 AND read_at IS NULL", "COALESCE(published, created_at) DESC"),
     "all": ("", "COALESCE(published, created_at) DESC"),
     "saved": ("WHERE saved = 1", "saved_at DESC"),
     "liked": ("WHERE reaction = 'like'", "reacted_at DESC"),
@@ -233,18 +236,59 @@ VIEWS = {
 SORTS = {"newest": None, "score": "score DESC NULLS LAST, COALESCE(published, created_at) DESC"}
 
 
-def list_papers(limit: int = 100, saved_only: bool = False, view: str = "all", sort: str = "newest") -> list[dict[str, Any]]:
+def _filters(view: str, tags: list[str] | None) -> tuple[list[str], list[Any]]:
+    """SQL clauses (without WHERE/AND) and params for a view plus an optional any-of tag filter."""
+    clauses: list[str] = []
+    params: list[Any] = []
+    where, _ = VIEWS.get(view, VIEWS["all"])
+    if where:
+        clauses.append(where.replace("WHERE ", ""))
+    wanted = [t.strip().lower() for t in (tags or []) if t and t.strip()]
+    if wanted:
+        marks = ",".join("?" * len(wanted))
+        clauses.append(
+            f"(EXISTS (SELECT 1 FROM json_each(papers.matched_tags) WHERE lower(value) IN ({marks}))"
+            f" OR EXISTS (SELECT 1 FROM json_each(papers.user_tags) WHERE lower(value) IN ({marks})))"
+        )
+        params.extend(wanted)
+        params.extend(wanted)
+    return clauses, params
+
+
+def list_papers(limit: int = 100, saved_only: bool = False, view: str = "all", sort: str = "newest",
+                tags: list[str] | None = None) -> list[dict[str, Any]]:
     if saved_only:
         view = "saved"
-    where, order = VIEWS.get(view, VIEWS["all"])
+    _, order = VIEWS.get(view, VIEWS["all"])
     if SORTS.get(sort):
         order = SORTS[sort]
+    clauses, params = _filters(view, tags)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     with connect() as conn:
         rows = conn.execute(
             f"SELECT * FROM papers {where} ORDER BY {order} LIMIT ?",
-            (limit,),
+            (*params, limit),
         ).fetchall()
     return [_paper_row_to_dict(r) for r in rows]
+
+
+def tag_counts(view: str = "all") -> dict[str, list[dict[str, Any]]]:
+    """Tags in use with paper counts, split into radar (matched) tags and your own tags."""
+    clauses, params = _filters(view, None)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    out: dict[str, list[dict[str, Any]]] = {}
+    with connect() as conn:
+        for key, column in (("matched", "matched_tags"), ("user", "user_tags")):
+            rows = conn.execute(
+                f"""
+                SELECT MIN(value) AS tag, COUNT(DISTINCT papers.arxiv_id) AS n
+                FROM papers, json_each(papers.{column}) {where}
+                GROUP BY lower(value) ORDER BY n DESC, lower(value)
+                """,
+                params,
+            ).fetchall()
+            out[key] = [{"tag": r["tag"], "count": int(r["n"])} for r in rows]
+    return out
 
 
 def set_reaction(arxiv_id: str, reaction: str | None) -> dict[str, Any] | None:
@@ -268,11 +312,13 @@ def counts() -> dict[str, int]:
             SELECT COUNT(*) AS total,
                    SUM(saved = 1) AS saved,
                    SUM(reaction = 'like') AS liked,
-                   SUM(reaction = 'dislike') AS disliked
+                   SUM(reaction = 'dislike') AS disliked,
+                   SUM(reaction IS NULL AND saved = 0 AND read_at IS NULL) AS inbox,
+                   SUM(read_at IS NOT NULL) AS read
             FROM papers
             """
         ).fetchone()
-    return {k: int(row[k] or 0) for k in ("total", "saved", "liked", "disliked")}
+    return {k: int(row[k] or 0) for k in ("total", "saved", "liked", "disliked", "inbox", "read")}
 
 
 def set_saved(arxiv_id: str, saved: bool) -> dict[str, Any] | None:
@@ -289,6 +335,26 @@ def set_saved(arxiv_id: str, saved: bool) -> dict[str, Any] | None:
 
 def count_saved() -> int:
     return counts()["saved"]
+
+
+def set_read(arxiv_id: str, read: bool) -> dict[str, Any] | None:
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE papers SET read_at = ? WHERE arxiv_id = ?",
+            (_now() if read else None, arxiv_id),
+        )
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
+    return _paper_row_to_dict(row)
+
+
+def mark_all_read(tags: list[str] | None = None) -> int:
+    """Mark every paper currently in the inbox (optionally only those with given tags) as read."""
+    clauses, params = _filters("inbox", tags)
+    with connect() as conn:
+        cur = conn.execute(f"UPDATE papers SET read_at = ? WHERE {' AND '.join(clauses)}", (_now(), *params))
+        return cur.rowcount
 
 
 def recent_context(limit: int = 20) -> list[dict[str, str]]:
@@ -386,22 +452,22 @@ def fts_query(text: str) -> str:
     return " AND ".join(parts)
 
 
-def search_text(query: str, limit: int = 50, view: str = "all") -> list[dict[str, Any]]:
+def search_text(query: str, limit: int = 50, view: str = "all", tags: list[str] | None = None) -> list[dict[str, Any]]:
     q = fts_query(query)
     if not q:
         return []
-    where, _ = VIEWS.get(view, VIEWS["all"])
-    where = where.replace("WHERE", "AND") if where else ""
+    clauses, params = _filters(view, tags)
+    extra = "".join(f" AND {c}" for c in clauses)
     with connect() as conn:
         rows = conn.execute(
             f"""
             SELECT papers.*, bm25(papers_fts, 8.0, 3.0, 2.0, 4.0, 5.0, 1.0) AS rank,
                    snippet(papers_fts, -1, '<mark>', '</mark>', ' … ', 18) AS snippet
             FROM papers_fts JOIN papers ON papers.arxiv_id = papers_fts.arxiv_id
-            WHERE papers_fts MATCH ? {where}
+            WHERE papers_fts MATCH ? {extra}
             ORDER BY rank LIMIT ?
             """,
-            (q, limit),
+            (q, *params, limit),
         ).fetchall()
     out = []
     for r in rows:
@@ -480,21 +546,21 @@ def embedding_stats() -> dict[str, Any]:
 
 
 def rank_by_vector(vec: list[float], limit: int = 20, exclude: str | None = None,
-                   model: str | None = None, view: str = "all") -> list[dict[str, Any]]:
+                   model: str | None = None, view: str = "all", tags: list[str] | None = None) -> list[dict[str, Any]]:
     scored = []
     for arxiv_id, emb in all_embeddings(model):
         if arxiv_id == exclude:
             continue
         scored.append((cosine(vec, emb), arxiv_id))
     scored.sort(reverse=True)
-    ids = [a for _, a in scored[: max(limit * 3, limit)]]
+    ids = [a for _, a in scored[: max(limit * 3, limit) if not tags else len(scored)]]
     if not ids:
         return []
-    where, _ = VIEWS.get(view, VIEWS["all"])
-    where = where.replace("WHERE", "AND") if where else ""
+    clauses, params = _filters(view, tags)
+    extra = "".join(f" AND {c}" for c in clauses)
     with connect() as conn:
         rows = conn.execute(
-            f"SELECT * FROM papers WHERE arxiv_id IN ({','.join('?' * len(ids))}) {where}", ids
+            f"SELECT * FROM papers WHERE arxiv_id IN ({','.join('?' * len(ids))}) {extra}", (*ids, *params)
         ).fetchall()
     by_id = {r["arxiv_id"]: _paper_row_to_dict(r) for r in rows}
     out = []

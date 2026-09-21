@@ -81,7 +81,7 @@ def test_reactions(tmp_path, monkeypatch):
     db.set_reaction("b", "dislike")
     assert [p["arxiv_id"] for p in db.list_papers(view="liked")] == ["a"]
     assert [p["arxiv_id"] for p in db.list_papers(view="disliked")] == ["b"]
-    assert db.counts() == {"total": 2, "saved": 0, "liked": 1, "disliked": 1}
+    assert db.counts() == {"total": 2, "saved": 0, "liked": 1, "disliked": 1, "inbox": 0, "read": 0}
 
     assert db.set_reaction("a", None)["reaction"] is None
     assert db.list_papers(view="liked") == []
@@ -107,3 +107,24 @@ def test_normalize_categories():
     valid, rejected = normalize_categories(["cs.AI", " cs.IR ", "q-bio.NC", "hep-th", "cs.ai", "", "not a cat", "CS.LG", "physics.comp-ph"])
     assert valid == ["cs.AI", "cs.IR", "q-bio.NC", "hep-th", "physics.comp-ph"]
     assert rejected == ["not a cat", "CS.LG"]
+
+
+def test_inbox_and_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAPER_SENTINEL_DATA", str(tmp_path))
+    import app.db as db
+    importlib.reload(db)
+    db.init_db()
+    for i in "abcd":
+        db.insert_paper(_paper(i), {})
+    assert {p["arxiv_id"] for p in db.list_papers(view="inbox")} == set("abcd")
+    db.set_saved("a", True)
+    db.set_reaction("b", "like")
+    db.set_read("c", True)
+    assert [p["arxiv_id"] for p in db.list_papers(view="inbox")] == ["d"]
+    assert db.counts()["inbox"] == 1 and db.counts()["read"] == 1
+    assert db.set_read("c", False)["read_at"] is None
+    assert {p["arxiv_id"] for p in db.list_papers(view="inbox")} == {"c", "d"}
+    assert db.mark_all_read() == 2
+    assert db.list_papers(view="inbox") == []
+    assert len(db.list_papers(view="all")) == 4
+    assert db.set_read("missing", True) is None

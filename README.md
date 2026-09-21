@@ -15,7 +15,9 @@ Default UI: **http://localhost:5792**
 - Scheduled scanning from every 30 minutes to daily
 - Short / medium / long AI summaries
 - 2-card, 3-card or table layout, switchable from the toolbar
+- Inbox workflow: new papers land in the Inbox; any action (Read later, Like, Not interested, Read) moves them out, so you only scroll through what you have not handled yet. Everything stays available in the Read later / Liked / Not interested / All tabs.
 - Read-later shelf: save any paper for later and switch between all papers and saved ones
+- Tag filter chips above the list (radar tags and your own tags, with counts), combinable with search and tabs
 - Like / Not interested reactions stored per paper, with Liked and Not interested views
 - Full-text search (SQLite FTS5 with stemming) over title, abstract, summary, your notes and PDF text
 - Semantic and hybrid search plus "Similar papers" using embeddings from your local LLM server

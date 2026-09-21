@@ -130,3 +130,6 @@ details.abstract p{margin:8px 0 0;color:#333}
 .custom-chips{margin-top:8px}
 .chip.custom span{border-style:dashed;border-color:#7656ff;color:#5035d9}
 .chip.custom input:checked+span{background:#7656ff;border-color:#7656ff;border-style:solid;color:#fff}
+.chip-remove{display:inline-block;margin-left:6px;padding:0 3px;font-weight:700;font-style:normal;color:inherit;opacity:.6;cursor:pointer;border-radius:4px}
+.chip-remove:hover{opacity:1;background:rgba(0,0,0,.12)}
+.chip.custom input:checked+span .chip-remove:hover{background:rgba(255,255,255,.25)}

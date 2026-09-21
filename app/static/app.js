@@ -26,8 +26,15 @@ async function postJSON(url,body,method='POST'){
 
 // Custom chips: values typed into an input become toggleable chips next to the built-in ones.
 function renderCustomChips(containerId,name,values){
-  $(containerId).innerHTML=values.map(v=>`<label class="chip custom"><input type="checkbox" name="${name}" value="${esc(v)}" checked><span>${esc(v)}</span></label>`).join('');
+  $(containerId).innerHTML=values.map(v=>`<label class="chip custom"><input type="checkbox" name="${name}" value="${esc(v)}" checked><span>${esc(v)}<b class="chip-remove" role="button" tabindex="0" title="Remove" aria-label="Remove ${esc(v)}">×</b></span></label>`).join('');
 }
+document.addEventListener('click',e=>{
+  const x=e.target.closest('.chip-remove');if(!x)return;
+  e.preventDefault();e.stopPropagation();x.closest('.chip').remove();
+});
+document.addEventListener('keydown',e=>{
+  if((e.key==='Enter'||e.key===' ')&&e.target.classList?.contains('chip-remove')){e.preventDefault();e.target.closest('.chip').remove();}
+});
 function customChipValues(name,checkedOnly=true){
   return [...document.querySelectorAll(`input[name="${name}"]${checkedOnly?':checked':''}`)].map(x=>x.value);
 }

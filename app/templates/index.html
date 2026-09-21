@@ -55,9 +55,26 @@
       <span id="scanStatus">Status: —</span>
       <span id="lastScan">Last scan: —</span>
       <span id="libraryStat">Library: —</span>
+      <span id="llmStat" class="llm-stat"><i class="dot"></i> LLM: checking…</span>
       <span><a href="/feed.xml" target="_blank">RSS feed</a></span>
       <span id="searchNote" class="hidden"></span>
       <span id="scanError" class="status-error hidden"></span>
+    </section>
+
+    <section id="llmBanner" class="llm-banner hidden" role="status" aria-live="polite">
+      <div class="llm-banner-body">
+        <strong id="llmBannerTitle"></strong>
+        <div id="llmBannerText" class="llm-banner-text"></div>
+        <pre id="llmBannerCmd" class="cmd hidden"><code></code><button type="button" id="llmCopyCmd" class="copy" title="Copy command">Copy</button></pre>
+        <div id="llmBannerSub" class="muted"></div>
+      </div>
+      <div class="llm-banner-actions">
+        <button type="button" id="llmStartBtn" class="primary hidden">Start server</button>
+        <button type="button" id="llmLoadChatBtn" class="hidden">Load chat model</button>
+        <button type="button" id="llmLoadEmbedBtn" class="hidden">Load embedding model</button>
+        <button type="button" id="llmRetryBtn">Re-check</button>
+        <button type="button" id="llmSettingsBtn">Settings</button>
+      </div>
     </section>
 
     <section id="emptyState" class="empty hidden">

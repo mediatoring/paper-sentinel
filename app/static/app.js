@@ -358,8 +358,72 @@ function clearSearch(){
 
 /* ------------------------------------------------------------------ status + scan */
 
+/* ------------------------------------------------------------------ LLM server monitor */
+
+let llmBusyUntil=0;
+function renderLlm(llm){
+  if(!llm)return;
+  const stat=$('llmStat'),banner=$('llmBanner');
+  const name=llm.hints?.name||'LLM';
+  const show=(id,visible)=>$(id).classList.toggle('hidden',!visible);
+  const busy=llm.action?.status==='running';
+  let level,text,title='',body='',cmd='',sub='',bannerLevel='';
+  if(!llm.enabled){
+    level='off';text=`${name}: disabled (extractive summaries only)`;
+  }else if(!llm.reachable){
+    level='down';text=`${name}: offline`;
+    title=`${name} is not running`;
+    body=`${llm.error} Paper Sentinel falls back to extractive summaries and text-only search until it is back.`;
+    cmd=llm.hints?.start||'';sub=llm.hints?.gui||'';bannerLevel='';
+  }else{
+    const chatMissing=llm.chat_available===false,chatCold=llm.chat_loaded===false;
+    const embOn=llm.embeddings_enabled!==false;
+    const embMissing=embOn&&(!llm.embedding_model||llm.embedding_available===false),embCold=embOn&&llm.embedding_loaded===false;
+    if(chatMissing||embMissing){
+      level='warn';text=`${name}: online, model missing`;
+      title=chatMissing?`Chat model “${llm.chat_model}” is not available on ${name}`:`No embedding model available on ${name}`;
+      body=chatMissing?`Available models: ${(llm.models||[]).slice(0,8).join(', ')||'none'}. Pick one in Settings or download it:`:`Semantic search, Similar and match scores need an embedding model. Download one and set it in Settings (or leave empty to auto-detect):`;
+      cmd=chatMissing?llm.hints?.load_chat:llm.hints?.load_embedding;bannerLevel='warn';
+    }else if(chatCold||embCold){
+      level='warn';text=`${name}: online, ${chatCold&&embCold?'models':'model'} not loaded`;
+      title=`${chatCold?llm.chat_model:llm.embedding_model}${chatCold&&embCold?` and ${llm.embedding_model}`:''} not loaded yet`;
+      body=`${name} will usually load the model on the first request (this makes the first scan slow). To load it now:`;
+      cmd=[chatCold?llm.hints?.load_chat:'',embCold?llm.hints?.load_embedding:''].filter(Boolean).join('\n');bannerLevel='warn';
+    }else{
+      level='ok';text=`${name}: online · ${llm.chat_model}${llm.embedding_model?` + ${llm.embedding_model}`:''}${llm.latency_ms!==null?` · ${llm.latency_ms} ms`:''}`;
+    }
+  }
+  if(busy){text+=` · ${llm.action.detail||'working…'}`;}
+  stat.className=`llm-stat ${level}`;stat.innerHTML=`<i class="dot"></i> ${esc(text)}`;stat.title=llm.base_url||'';
+  const showBanner=!!title;
+  banner.classList.toggle('hidden',!showBanner);
+  if(!showBanner)return;
+  banner.className=`llm-banner${bannerLevel?' '+bannerLevel:''}`;
+  $('llmBannerTitle').textContent=title;$('llmBannerText').textContent=body;
+  $('llmBannerCmd').querySelector('code').textContent=cmd;show('llmBannerCmd',!!cmd);
+  const actionErr=llm.action?.status==='error'?` Last attempt: ${llm.action.detail}`:'';
+  $('llmBannerSub').textContent=(sub+actionErr).trim();
+  show('llmStartBtn',!llm.reachable&&llm.can_start);
+  show('llmLoadChatBtn',llm.reachable&&llm.can_start&&llm.chat_loaded===false&&llm.chat_available!==false);
+  show('llmLoadEmbedBtn',llm.reachable&&llm.can_start&&llm.embedding_loaded===false&&llm.embedding_available!==false);
+  ['llmStartBtn','llmLoadChatBtn','llmLoadEmbedBtn'].forEach(id=>$(id).disabled=busy||Date.now()<llmBusyUntil);
+}
+
+async function llmAction(url,body,label){
+  llmBusyUntil=Date.now()+4000;
+  const resp=await postJSON(url,body);
+  const data=await resp.json().catch(()=>({}));
+  toast(resp.ok?`${label}: ${data.detail||'started'}`:(data.detail||`${label} failed`));
+  setTimeout(loadStatus,1500);
+}
+
+async function recheckLlm(){
+  const llm=await fetch('/api/llm/health?force=true').then(r=>r.json());renderLlm(llm);toast(llm.reachable?'LLM server reachable':'LLM server still offline');
+}
+
 async function loadStatus(){
   const s=await fetch('/api/status').then(r=>r.json());
+  renderLlm(s.llm);
   const status=s.scan_status||'idle';
   $('scanStatus').textContent=`Status: ${status}`;updateCounts(s.counts);$('scanStatus').className=status==='error'?'status-error':'';
   $('lastScan').textContent=`Last scan: ${s.last_scan?dateText(s.last_scan):'never'}`;
@@ -379,6 +443,12 @@ $('settingsBtn').addEventListener('click',async()=>{await loadSettings();$('sett
 $('closeSettings').addEventListener('click',()=>$('settingsDialog').close());$('cancelSettings').addEventListener('click',()=>$('settingsDialog').close());
 $('settingsForm').addEventListener('submit',saveSettings);$('scanBtn').addEventListener('click',scanNow);
 $('rebuildEmbeddings').addEventListener('click',rebuildEmbeddings);
+$('llmStartBtn').addEventListener('click',()=>llmAction('/api/llm/start',undefined,'Start server'));
+$('llmLoadChatBtn').addEventListener('click',()=>llmAction('/api/llm/load',{kind:'chat'},'Load chat model'));
+$('llmLoadEmbedBtn').addEventListener('click',()=>llmAction('/api/llm/load',{kind:'embedding'},'Load embedding model'));
+$('llmRetryBtn').addEventListener('click',recheckLlm);
+$('llmSettingsBtn').addEventListener('click',async()=>{await loadSettings();$('settingsDialog').showModal();});
+$('llmCopyCmd').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('llmBannerCmd').querySelector('code').textContent);toast('Command copied');}catch{toast('Copy failed – select the text manually');}});
 $('papers').addEventListener('click',e=>{
   const hit=(sel)=>e.target.closest(sel);
   let b;

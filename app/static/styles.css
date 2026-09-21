@@ -109,3 +109,15 @@ details.abstract p{margin:8px 0 0;color:#333}
 .row-details .tools{border-top:0;padding-top:0}
 .row-details details.abstract{margin-top:6px}
 @media(max-width:760px){.toolbar{flex-direction:column;align-items:stretch}.search{flex-wrap:wrap}}
+
+.llm-stat .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#bbb;margin-right:4px;vertical-align:middle}
+.llm-stat.ok .dot{background:#2e9e5b}.llm-stat.warn .dot{background:#e6a100}.llm-stat.down .dot{background:#c0392b}.llm-stat.off .dot{background:#999}
+.llm-banner{display:flex;gap:16px;justify-content:space-between;align-items:flex-start;background:#fff4f2;border:1px solid #f0b8ae;border-radius:12px;padding:14px 16px;margin:0 0 20px;font-size:14px;line-height:1.5}
+.llm-banner.warn{background:#fff9e6;border-color:#e6c86a}
+.llm-banner-body{flex:1 1 auto;min-width:0}
+.llm-banner-text{margin-top:4px;color:#444}
+.llm-banner-actions{display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
+.cmd{position:relative;margin:8px 0 4px;padding:8px 70px 8px 12px;background:#111;color:#fff;border-radius:8px;font-size:13px;overflow:auto;white-space:pre-wrap}
+.cmd .copy{position:absolute;top:5px;right:6px;padding:3px 8px;font-size:11px;border-radius:6px;border:1px solid #666;background:#222;color:#ddd}
+.cmd .copy:hover{background:#333}
+@media(max-width:760px){.llm-banner{flex-direction:column}.llm-banner-actions{flex-direction:row;flex-wrap:wrap}}

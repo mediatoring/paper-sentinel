@@ -22,6 +22,7 @@ Default UI: **http://localhost:5792**
 - Notes and your own tags on every paper
 - PDF library: download PDFs into `data/library`, text is extracted and indexed
 - Learns from your reactions: a match score ranks new papers and liked/disliked titles inform the LLM summaries
+- LLM server monitor: shows whether LM Studio / Ollama is reachable and which models are loaded, with the exact command to start it and one-click Start / Load buttons when the CLI is available locally
 - Local OpenAI-compatible LLM support
 - Graceful extractive fallback when the LLM is disabled or unavailable
 - Basic cross-reference hints against recently stored papers
@@ -82,6 +83,17 @@ When Paper Sentinel itself runs in Docker, a local LLM running on the host is us
 - **Notes and tags** are yours; they are searchable and shown as green badges.
 - **PDF library**: *Save PDF* downloads the paper into `data/library/` and indexes its text; by default this also happens when you save or like a paper. Files are served at `/library/<arxiv_id>.pdf`.
 - **Match score**: once you like something, every embedded paper gets a score (similarity to the mean of liked papers, pushed away from disliked ones). Sort by *Best match* to see it in action. Liked and disliked titles are also passed to the LLM as preference context for new summaries.
+
+## LLM server monitor
+
+The status bar shows a coloured dot for the local LLM server. When it is offline or a model is not loaded, a banner explains what is wrong and shows the command to fix it, for example:
+
+```text
+lms server start --port 1234
+lms load openai/gpt-oss-20b -y
+```
+
+If Paper Sentinel runs on the same machine as LM Studio (`lms` in PATH or `~/.lmstudio/bin/lms`) or Ollama (`ollama` in PATH), the banner also offers **Start server** and **Load model** buttons that run those commands for you. In Docker the buttons are hidden and you run the command on the host.
 
 ## Local LLM setup
 

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from app import db
 from app.config import ARXIV_CATEGORIES, LEGACY_VIEW_MODES, SUGGESTED_TAGS, VIEW_MODES
 from app.scheduler import reschedule, start as start_scheduler, stop as stop_scheduler
-from app.services import embeddings, library
+from app.services import embeddings, library, llm_health
 from app.services.scanner import scan_once
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -309,7 +309,48 @@ def status():
     state["counts"] = db.counts()
     state["saved_count"] = state["counts"]["saved"]
     state["library"] = db.embedding_stats()
+    state["llm"] = llm_health.probe(db.get_settings())
     return state
+
+
+# ---------------------------------------------------------------------------
+# LLM server monitor
+# ---------------------------------------------------------------------------
+
+@app.get("/api/llm/health")
+def llm_health_get(force: bool = False):
+    return llm_health.probe(db.get_settings(), force=force)
+
+
+@app.post("/api/llm/start")
+def llm_start(background_tasks: BackgroundTasks):
+    settings = db.get_settings()
+    state = llm_health.probe(settings, force=True)
+    if state["reachable"]:
+        return {"ok": True, "detail": "Server is already running."}
+    if not state["can_start"]:
+        raise HTTPException(status_code=400, detail=f"No local CLI found. Start it manually: {state['hints']['start']}")
+    background_tasks.add_task(llm_health.start_server, settings)
+    return {"ok": True, "detail": "Starting in the background…"}
+
+
+class LoadPayload(BaseModel):
+    kind: str = "chat"
+
+
+@app.post("/api/llm/load")
+def llm_load(payload: LoadPayload, background_tasks: BackgroundTasks):
+    if payload.kind not in ("chat", "embedding"):
+        raise HTTPException(status_code=400, detail="kind must be chat or embedding")
+    settings = db.get_settings()
+    state = llm_health.probe(settings, force=True)
+    if not state["reachable"]:
+        raise HTTPException(status_code=409, detail="Server is not reachable; start it first.")
+    if not state["can_start"]:
+        key = "load_chat" if payload.kind == "chat" else "load_embedding"
+        raise HTTPException(status_code=400, detail=f"No local CLI found. Load it manually: {state['hints'][key]}")
+    background_tasks.add_task(llm_health.load_model, settings, payload.kind)
+    return {"ok": True, "detail": "Loading in the background…"}
 
 
 @app.post("/api/scan")

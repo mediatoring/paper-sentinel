@@ -128,3 +128,17 @@ def test_inbox_and_read(tmp_path, monkeypatch):
     assert db.list_papers(view="inbox") == []
     assert len(db.list_papers(view="all")) == 4
     assert db.set_read("missing", True) is None
+
+
+def test_paper_exists_ignores_version(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAPER_SENTINEL_DATA", str(tmp_path))
+    import app.db as db
+    importlib.reload(db)
+    db.init_db()
+    db.insert_paper(_paper("2609.20822v1"), {})
+    assert db.paper_exists("2609.20822v1")
+    assert db.paper_exists("2609.20822v2")
+    assert db.paper_exists("2609.20822")
+    assert not db.paper_exists("2609.20823v1")
+    assert not db.paper_exists("2609.2082v1")
+    assert db.base_arxiv_id("hep-th/9901001v2") == "hep-th/9901001"

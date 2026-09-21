@@ -165,9 +165,18 @@ def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def base_arxiv_id(arxiv_id: str) -> str:
+    """2609.20822v3 -> 2609.20822 (a new version of a stored paper is not a new paper)."""
+    return re.sub(r"v\d+$", "", arxiv_id or "")
+
+
 def paper_exists(arxiv_id: str) -> bool:
+    base = base_arxiv_id(arxiv_id)
     with connect() as conn:
-        return bool(conn.execute("SELECT 1 FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone())
+        return bool(conn.execute(
+            "SELECT 1 FROM papers WHERE arxiv_id = ? OR arxiv_id = ? OR arxiv_id GLOB ?",
+            (arxiv_id, base, f"{base}v[0-9]*"),
+        ).fetchone())
 
 
 def insert_paper(

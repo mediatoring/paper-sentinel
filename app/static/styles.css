@@ -7,7 +7,13 @@
 .tab{border:1px solid #cfcfc9;background:#fff;border-radius:999px;padding:8px 14px;font-weight:600;color:#444}
 .tab.active{background:#111;color:#fff;border-color:#111}
 .tab .count{display:inline-block;min-width:20px;margin-left:6px;padding:1px 6px;border-radius:999px;background:#7656ff;color:#fff;font-size:12px;text-align:center}
-.paper .links{align-items:center}
-.save-btn{margin-left:auto;padding:6px 10px;font-size:13px;font-weight:600;border-radius:999px;border:1px solid #cfcfc9;background:#fff;color:#444}
+.paper{position:relative}
+.paper .meta:first-of-type,.paper h3{padding-right:120px}
+.save-btn{position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid #cfcfc9;background:#fff;color:#555}
+.save-btn svg path{fill:transparent}
+.save-btn:hover{border-color:#7656ff;color:#5035d9}
 .save-btn.saved{background:#fff4cc;border-color:#e6b800;color:#7a5d00}
+.save-btn.saved svg path{fill:currentColor}
 .save-btn:disabled{opacity:.6;cursor:default}
+.paper.is-saved{border-color:#e6b800;box-shadow:inset 4px 0 0 #e6b800}
+.compact .paper .meta:first-of-type,.compact .paper h3{padding-right:140px}

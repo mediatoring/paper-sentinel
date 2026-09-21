@@ -43,10 +43,17 @@ async function saveSettings(e){
   if(settings.browser_notifications && 'Notification' in window && Notification.permission==='default') Notification.requestPermission();
 }
 
+const BOOKMARK='<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+function saveButton(id,saved){
+  const label=saved?'Saved – remove from Read later':'Save to Read later';
+  return `<button type="button" class="save-btn${saved?' saved':''}" data-id="${esc(id)}" data-saved="${saved?1:0}" title="${label}" aria-label="${label}" aria-pressed="${saved?'true':'false'}">${BOOKMARK}<span>${saved?'Saved':'Read later'}</span></button>`;
+}
+
 function renderPaper(p){
   const authors=(p.authors||[]).slice(0,4).join(', ')+(p.authors?.length>4?' et al.':'');
   const tags=(p.matched_tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('');
-  return `<article class="paper">
+  return `<article class="paper${p.saved?' is-saved':''}">
+    ${saveButton(p.arxiv_id,p.saved)}
     <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
     <h3>${esc(p.title)}</h3><div class="meta">${esc(authors)}</div><div class="tags">${tags}</div>
     ${p.summary?`<p><span class="label">Summary.</span> ${esc(p.summary)}</p>`:''}
@@ -54,9 +61,7 @@ function renderPaper(p){
     ${p.key_contribution?`<p><span class="label">Key contribution.</span> ${esc(p.key_contribution)}</p>`:''}
     ${p.limitations?`<p><span class="label">Limitations / uncertainty.</span> ${esc(p.limitations)}</p>`:''}
     ${p.related_to?`<p><span class="label">Related.</span> ${esc(p.related_to)}</p>`:''}
-    <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}
-      <button type="button" class="save-btn${p.saved?' saved':''}" data-id="${esc(p.arxiv_id)}" data-saved="${p.saved?1:0}" title="${p.saved?'Remove from read-later shelf':'Save to read later'}">${p.saved?'★ Saved':'☆ Read later'}</button>
-    </div>
+    <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
   </article>`;
 }
 
@@ -82,8 +87,9 @@ async function toggleSaved(btn){
   if(!resp.ok){toast('Could not update read-later shelf');return;}
   toast(saved?'Saved for later':'Removed from shelf');
   const count=$('savedCount');count.textContent=Math.max(0,Number(count.textContent||0)+(saved?1:-1));
-  if(currentView==='saved'&&!saved){btn.closest('.paper').remove();if(!$('papers').children.length)$('emptySaved').classList.remove('hidden');return;}
-  btn.dataset.saved=saved?'1':'0';btn.classList.toggle('saved',saved);btn.textContent=saved?'★ Saved':'☆ Read later';btn.title=saved?'Remove from read-later shelf':'Save to read later';
+  const card=btn.closest('.paper');card.classList.toggle('is-saved',saved);
+  if(currentView==='saved'&&!saved){card.remove();if(!$('papers').children.length)$('emptySaved').classList.remove('hidden');return;}
+  btn.outerHTML=saveButton(id,saved);
 }
 
 function setView(view){

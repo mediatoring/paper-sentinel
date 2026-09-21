@@ -29,8 +29,22 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Paper Sentinel", version="0.1.0", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+STATIC_DIR = BASE_DIR / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+def _asset_version() -> str:
+    """Changes whenever a static file changes, so browsers never serve a stale app.js/styles.css."""
+    return str(int(max(f.stat().st_mtime for f in STATIC_DIR.iterdir() if f.is_file())))
+
+
+@app.middleware("http")
+async def static_no_cache(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") or request.url.path == "/":
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 class SettingsPayload(BaseModel):
@@ -67,6 +81,7 @@ def index(request: Request):
             "request": request,
             "categories": ARXIV_CATEGORIES,
             "suggested_tags": SUGGESTED_TAGS,
+            "asset_version": _asset_version(),
         },
     )
 

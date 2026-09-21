@@ -18,6 +18,15 @@ function toast(message){
 }
 function esc(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function dateText(s){if(!s)return '—';try{return new Date(s).toLocaleString()}catch{return s}}
+// Minimal inline markdown for LLM output: **bold**, *italic*/_italic_, `code`. Everything is escaped first.
+function md(s=''){
+  let t=esc(s);
+  t=t.replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  t=t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  t=t.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g,'$1<em>$2</em>');
+  t=t.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,;:!?]|$)/g,'$1<em>$2</em>');
+  return t;
+}
 function truncate(s,n){s=String(s||'');return s.length>n?s.slice(0,n-1).trimEnd()+'…':s;}
 function pct(x){return `${Math.round(Math.max(0,Math.min(1,Number(x)))*100)} %`;}
 function sizeText(bytes){if(!bytes)return '';return bytes>1048576?`${(bytes/1048576).toFixed(1)} MB`:`${Math.round(bytes/1024)} kB`;}
@@ -104,7 +113,7 @@ async function saveSettings(e){
   e.preventDefault();
   const resp=await postJSON('/api/settings',gatherSettings());
   if(!resp.ok){toast((await resp.json()).detail||'Could not save settings');return;}
-  settings=await resp.json();$('settingsDialog').close();toast('Settings saved');await loadPapers();
+  settings=await resp.json();$('settingsDialog').close();toast('Settings saved');await loadPapers(true);
   if(settings.browser_notifications && 'Notification' in window && Notification.permission==='default') Notification.requestPermission();
 }
 
@@ -173,11 +182,11 @@ function snippetBlock(p){
 }
 
 function llmBlock(p){
-  return `${p.summary?`<p><span class="label">Summary.</span> ${esc(p.summary)}</p>`:''}
-    ${p.why_relevant?`<p><span class="label">Why it matters.</span> ${esc(p.why_relevant)}</p>`:''}
-    ${p.key_contribution?`<p><span class="label">Key contribution.</span> ${esc(p.key_contribution)}</p>`:''}
-    ${p.limitations?`<p><span class="label">Limitations / uncertainty.</span> ${esc(p.limitations)}</p>`:''}
-    ${p.related_to?`<p><span class="label">Related.</span> ${esc(p.related_to)}</p>`:''}`;
+  return `${p.summary?`<p><span class="label">Summary.</span> ${md(p.summary)}</p>`:''}
+    ${p.why_relevant?`<p><span class="label">Why it matters.</span> ${md(p.why_relevant)}</p>`:''}
+    ${p.key_contribution?`<p><span class="label">Key contribution.</span> ${md(p.key_contribution)}</p>`:''}
+    ${p.limitations?`<p><span class="label">Limitations / uncertainty.</span> ${md(p.limitations)}</p>`:''}
+    ${p.related_to?`<p><span class="label">Related.</span> ${md(p.related_to)}</p>`:''}`;
 }
 
 function abstractBlock(p,open=false){
@@ -185,7 +194,7 @@ function abstractBlock(p,open=false){
 }
 
 function notesPreview(p){
-  return p.notes?`<div class="notes-preview"><span class="label">Notes.</span> ${esc(p.notes)}</div>`:'';
+  return p.notes?`<div class="notes-preview"><span class="label">Notes.</span> ${md(p.notes)}</div>`:'';
 }
 
 function toolsBlock(p){
@@ -357,12 +366,33 @@ function clearTags(){
   $('tagClear').classList.add('hidden');loadPapers();
 }
 
-async function loadPapers(){
+let lastRenderKey='';
+function openStates(){
+  const abs=new Set(),notes=new Set(),similar=new Set();
+  document.querySelectorAll('#papers .paper').forEach(c=>{
+    const id=c.dataset.id;
+    if(c.querySelector('details.abstract')?.open)abs.add(id);
+    if(c.querySelector('.notes-panel:not(.hidden)'))notes.add(id);
+    if(c.querySelector('.similar-panel:not(.hidden)'))similar.add(id);
+  });
+  return {abs,notes,similar};
+}
+function restoreOpenStates(st){
+  st.abs.forEach(id=>{const d=$('papers').querySelector(`.paper[data-id="${CSS.escape(id)}"] details.abstract`);if(d)d.open=true;});
+}
+
+async function loadPapers(force=false){
   const view=currentView;
   const papers=await fetchList();
   const mode=layout();
+  // Re-render only when something actually changed, so open abstracts and panels are not reset by the status poll.
+  const key=JSON.stringify([view,mode,currentQuery,currentSort,activeTags,papers.map(p=>[p.arxiv_id,p.saved,p.reaction,p.read_at,p.notes,p.user_tags,p.has_pdf,p.score,p.summary?.length])]);
+  if(!force&&key===lastRenderKey&&$('papers').children.length){return;}
+  lastRenderKey=key;
+  const st=openStates();
   $('papers').className=mode==='table'?'paper-list':`paper-grid ${mode}`;
   $('papers').innerHTML=mode==='table'?renderList(papers):papers.map(renderPaper).join('');
+  restoreOpenStates(st);
   updateListBar(papers);
   document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
   const empty={inbox:'emptyInbox',all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked'};
@@ -426,7 +456,7 @@ async function markAllRead(){
   if(!confirm(`Mark ${activeTags.length?'the filtered':'all'} inbox papers as read? They stay available in the All tab.`))return;
   const resp=await postJSON('/api/papers/read-all',{tags:activeTags});
   if(!resp.ok){toast('Could not mark as read');return;}
-  const data=await resp.json();toast(`${data.marked} paper(s) marked as read`);await loadStatus();await loadPapers();
+  const data=await resp.json();toast(`${data.marked} paper(s) marked as read`);await loadStatus();await loadPapers(true);
 }
 
 async function setReaction(btn){
@@ -505,13 +535,13 @@ async function setLayout(mode){
 }
 
 function setView(view){
-  currentView=view;try{localStorage.setItem('ps.view',view)}catch{}
+  currentView=view;try{localStorage.setItem('ps.view',view)}catch{}lastRenderKey='';
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));
   loadTagChips();loadPapers();
 }
 
 function setSort(sort){
-  currentSort=sort;try{localStorage.setItem('ps.sort',sort)}catch{}
+  currentSort=sort;try{localStorage.setItem('ps.sort',sort)}catch{}lastRenderKey='';
   loadPapers();
 }
 
@@ -519,11 +549,11 @@ function runSearch(e){
   if(e)e.preventDefault();
   currentQuery=$('searchInput').value.trim();
   $('searchClear').classList.toggle('hidden',!currentQuery);
-  loadPapers();
+  loadPapers(true);
 }
 
 function clearSearch(){
-  $('searchInput').value='';currentQuery='';$('searchClear').classList.add('hidden');loadPapers();
+  $('searchInput').value='';currentQuery='';$('searchClear').classList.add('hidden');loadPapers(true);
 }
 
 /* ------------------------------------------------------------------ status + scan */

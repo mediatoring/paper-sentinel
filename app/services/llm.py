@@ -74,6 +74,7 @@ Write the summary at roughly {target} words.
 
 Return ONLY valid JSON with these string fields:
 summary, why_relevant, key_contribution, limitations, related_to
+Write plain prose inside the strings: no markdown, no ** or _ emphasis, no bullet lists, no headings.
 
 In why_relevant, relate the paper to the user's tags and, when preferences are given, to what they liked or disliked.
 {_preference_block(preferences)}

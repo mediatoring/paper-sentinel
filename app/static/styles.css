@@ -47,14 +47,18 @@
 .paper-table td{padding:12px 14px;border-top:1px solid #eeeee9;vertical-align:top}
 .paper-table tbody tr.row:hover{background:#fafaf8}
 .col-date{white-space:nowrap;color:#777;font-size:13px;width:1%}
-.col-title{min-width:260px}
+.col-title{width:24%;min-width:200px}
 .row-toggle{border:0;background:transparent;padding:0;text-align:left;font:inherit;font-weight:700;line-height:1.35;color:#171717;cursor:pointer}
 .row-toggle:hover{color:#5035d9}
 .row-sub{color:#777;font-size:12px;margin-top:4px}
-.col-tags{width:1%;white-space:nowrap}
+.col-tags{width:150px;white-space:normal}
 .col-tags .badge{margin:0 4px 4px 0;display:inline-block}
-.col-summary{color:#444;font-size:13px;line-height:1.5;max-width:420px}
-.col-actions{white-space:nowrap;width:1%}
+.col-abstract{color:#333;font-size:13px;line-height:1.55;width:46%;min-width:320px}
+.abstract-full{white-space:normal}
+.row-key{margin-top:8px;padding-top:8px;border-top:1px dashed #e5e5e0;color:#444}
+.col-actions-head{text-align:right}
+.col-actions-head .tool-btn{font-weight:600;text-transform:none;letter-spacing:0}
+.col-actions{white-space:nowrap;width:1%;text-align:right}
 .col-actions>*{display:inline-flex;vertical-align:middle;margin-left:6px}
 .col-actions a{color:#5035d9;font-size:13px;margin-left:0}
 .col-actions .save-btn{padding:5px 9px}

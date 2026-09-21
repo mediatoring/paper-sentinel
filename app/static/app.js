@@ -166,11 +166,10 @@ function renderRow(p){
     <td class="col-date">${esc(dateText(p.published).split(',')[0])}</td>
     <td class="col-title"><button type="button" class="row-toggle" aria-expanded="false" title="Show abstract, summary, notes and tools">${esc(p.title)}</button><div class="row-sub">${esc(authors)} · ${esc((p.categories||[]).join(', '))}</div>${snippetBlock(p)}</td>
     <td class="col-tags">${tagBadges(p)}</td>
-    <td class="col-summary">${esc(truncate(p.key_contribution||p.summary||p.abstract,160))}</td>
+    <td class="col-abstract"><div class="abstract-full">${esc(p.abstract)}</div>${p.key_contribution?`<div class="row-key"><span class="label">Key contribution.</span> ${esc(p.key_contribution)}</div>`:''}</td>
     <td class="col-actions"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer" title="Open on arXiv">arXiv</a>${saveButton(p.arxiv_id,p.saved)}${reactionBar(p.arxiv_id,p.reaction)}</td>
   </tr>
   <tr class="row-details hidden" data-for="${esc(p.arxiv_id)}"><td colspan="5">
-    ${abstractBlock(p,true)}
     ${llmBlock(p)}
     ${notesPreview(p)}
     <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
@@ -178,8 +177,25 @@ function renderRow(p){
   </td></tr>`;
 }
 
+let expandAll=false;
+try { expandAll=localStorage.getItem('ps.expand')==='1'; } catch {}
+
 function renderTable(papers){
-  return `<table class="paper-table"><thead><tr><th>Date</th><th>Paper</th><th>Tags</th><th>Key contribution</th><th></th></tr></thead><tbody>${papers.map(renderRow).join('')}</tbody></table>`;
+  return `<table class="paper-table"><thead><tr><th>Date</th><th>Paper</th><th>Tags</th><th>Abstract</th><th class="col-actions-head"><button type="button" id="expandAllBtn" class="tool-btn" title="Show or hide summary, notes and tools for every row">${expandAll?'Collapse all':'Expand all'}</button></th></tr></thead><tbody>${papers.map(renderRow).join('')}</tbody></table>`;
+}
+
+function applyExpandAll(){
+  document.querySelectorAll('#papers .row').forEach(row=>{
+    const details=row.nextElementSibling,btn=row.querySelector('.row-toggle');
+    if(!details?.classList.contains('row-details'))return;
+    details.classList.toggle('hidden',!expandAll);row.classList.toggle('open',expandAll);btn?.setAttribute('aria-expanded',String(expandAll));
+  });
+  const b=$('expandAllBtn');if(b)b.textContent=expandAll?'Collapse all':'Expand all';
+}
+
+function toggleExpandAll(){
+  expandAll=!expandAll;try{localStorage.setItem('ps.expand',expandAll?'1':'0')}catch{}
+  applyExpandAll();
 }
 
 function updateCounts(c){
@@ -210,6 +226,7 @@ async function loadPapers(){
   const mode=layout();
   $('papers').className=mode==='table'?'paper-list':`paper-grid ${mode}`;
   $('papers').innerHTML=mode==='table'?renderTable(papers):papers.map(renderPaper).join('');
+  if(mode==='table'&&expandAll)applyExpandAll();
   document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
   const empty={all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked'};
   for(const [k,id] of Object.entries(empty)) $(id).classList.toggle('hidden',!!currentQuery||k!==view||papers.length!==0);
@@ -455,6 +472,7 @@ $('papers').addEventListener('click',e=>{
   if((b=hit('.save-btn')))return toggleSaved(b);
   if((b=hit('.react-btn')))return setReaction(b);
   if((b=hit('.row-toggle')))return toggleRow(b);
+  if((b=hit('#expandAllBtn')))return toggleExpandAll();
   if((b=hit('.pdf-btn')))return downloadPdf(b);
   if((b=hit('.pdf-remove')))return removePdf(b);
   if((b=hit('.similar-btn')))return showSimilar(b);

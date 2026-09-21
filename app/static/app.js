@@ -137,11 +137,14 @@ function paperClasses(p,base){
   return [base,p.saved?'is-saved':'',p.reaction==='like'?'is-liked':'',p.reaction==='dislike'?'is-disliked':''].filter(Boolean).join(' ');
 }
 
+const MATCH_TIP='Match = how close this paper is to the papers you liked (thumbs up). It is computed from embeddings: the topic vector of this paper compared with the average of your liked papers, pushed away from papers you marked Not interested. 100 % = same topic as your likes, 0 % = unrelated or close to your dislikes. It updates after every reaction. Choose Sort → Best match to rank by it.';
+const SIM_TIP='Similarity by meaning (embeddings) to your search query or to the paper you asked for. Higher = closer topic.';
+
 function tagBadges(p){
   const matched=(p.matched_tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`);
   const user=(p.user_tags||[]).map(t=>`<span class="badge user" title="Your tag">${esc(t)}</span>`);
-  const score=p.score!==null&&p.score!==undefined?`<span class="badge score" title="Match with what you liked (embedding similarity)">match ${pct(p.score)}</span>`:'';
-  const sim=p.similarity!==undefined?`<span class="badge score" title="Similarity to your query">${pct(p.similarity)}</span>`:'';
+  const score=p.score!==null&&p.score!==undefined?`<span class="badge score tip" tabindex="0" data-tip="${esc(MATCH_TIP)}">match ${pct(p.score)}</span>`:'';
+  const sim=p.similarity!==undefined?`<span class="badge score tip" tabindex="0" data-tip="${esc(SIM_TIP)}">${pct(p.similarity)}</span>`:'';
   return matched.join('')+user.join('')+score+sim;
 }
 
@@ -203,42 +206,40 @@ function renderPaper(p){
   </article>`;
 }
 
-function renderRow(p){
-  const authors=(p.authors||[]).slice(0,3).join(', ')+(p.authors?.length>3?' et al.':'');
-  return `<tr class="${paperClasses(p,'row')}" data-id="${esc(p.arxiv_id)}">
-    <td class="col-date">${esc(dateText(p.published).split(',')[0])}</td>
-    <td class="col-title"><button type="button" class="row-toggle" aria-expanded="false" title="Show abstract, summary, notes and tools">${esc(p.title)}</button><div class="row-sub">${esc(authors)} · ${esc((p.categories||[]).join(', '))}</div>${snippetBlock(p)}</td>
-    <td class="col-tags">${tagBadges(p)}</td>
-    <td class="col-abstract"><div class="abstract-full">${esc(p.abstract)}</div>${p.key_contribution?`<div class="row-key"><span class="label">Key contribution.</span> ${esc(p.key_contribution)}</div>`:''}</td>
-    <td class="col-actions"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer" title="Open on arXiv">arXiv</a>${saveButton(p.arxiv_id,p.saved)}${reactionBar(p.arxiv_id,p.reaction)}</td>
-  </tr>
-  <tr class="row-details hidden" data-for="${esc(p.arxiv_id)}"><td colspan="5">
-    ${llmBlock(p)}
-    ${notesPreview(p)}
-    <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
-    ${toolsBlock(p)}
-  </td></tr>`;
-}
-
 let expandAll=false;
 try { expandAll=localStorage.getItem('ps.expand')==='1'; } catch {}
 
-function renderTable(papers){
-  return `<table class="paper-table"><thead><tr><th>Date</th><th>Paper</th><th>Tags</th><th>Abstract</th><th class="col-actions-head"><button type="button" id="expandAllBtn" class="tool-btn" title="Show or hide summary, notes and tools for every row">${expandAll?'Collapse all':'Expand all'}</button></th></tr></thead><tbody>${papers.map(renderRow).join('')}</tbody></table>`;
+function renderListItem(p){
+  const authors=(p.authors||[]).join(', ');
+  const hasAi=!!(p.summary||p.why_relevant||p.key_contribution||p.limitations||p.related_to);
+  return `<article class="${paperClasses(p,'paper list-item')}" data-id="${esc(p.arxiv_id)}">
+    <div class="list-main">
+      <div class="meta">${esc(dateText(p.published))} · ${esc((p.categories||[]).join(', '))}</div>
+      <h3>${esc(p.title)}</h3>
+      <div class="meta authors">${esc(authors)}</div>
+      <div class="tags">${tagBadges(p)}</div>
+      ${snippetBlock(p)}
+      <p class="abstract-full">${esc(p.abstract)}</p>
+      ${hasAi?`<details class="ai-summary"${expandAll?' open':''}><summary>AI summary</summary>${llmBlock(p)}</details>`:''}
+      ${notesPreview(p)}
+    </div>
+    <aside class="list-side">
+      ${saveButton(p.arxiv_id,p.saved)}
+      ${reactionBar(p.arxiv_id,p.reaction)}
+      <div class="links"><a href="${esc(p.abs_url)}" target="_blank" rel="noreferrer">arXiv</a>${p.pdf_url?`<a href="${esc(p.pdf_url)}" target="_blank" rel="noreferrer">PDF</a>`:''}</div>
+    </aside>
+    <div class="list-foot">${toolsBlock(p)}</div>
+  </article>`;
 }
 
-function applyExpandAll(){
-  document.querySelectorAll('#papers .row').forEach(row=>{
-    const details=row.nextElementSibling,btn=row.querySelector('.row-toggle');
-    if(!details?.classList.contains('row-details'))return;
-    details.classList.toggle('hidden',!expandAll);row.classList.toggle('open',expandAll);btn?.setAttribute('aria-expanded',String(expandAll));
-  });
-  const b=$('expandAllBtn');if(b)b.textContent=expandAll?'Collapse all':'Expand all';
+function renderList(papers){
+  return `<div class="list-toolbar"><button type="button" id="expandAllBtn" class="tool-btn">${expandAll?'Collapse AI summaries':'Expand AI summaries'}</button></div>${papers.map(renderListItem).join('')}`;
 }
 
 function toggleExpandAll(){
   expandAll=!expandAll;try{localStorage.setItem('ps.expand',expandAll?'1':'0')}catch{}
-  applyExpandAll();
+  document.querySelectorAll('#papers details.ai-summary').forEach(d=>d.open=expandAll);
+  const b=$('expandAllBtn');if(b)b.textContent=expandAll?'Collapse AI summaries':'Expand AI summaries';
 }
 
 function updateCounts(c){
@@ -268,8 +269,7 @@ async function loadPapers(){
   const papers=await fetchList();
   const mode=layout();
   $('papers').className=mode==='table'?'paper-list':`paper-grid ${mode}`;
-  $('papers').innerHTML=mode==='table'?renderTable(papers):papers.map(renderPaper).join('');
-  if(mode==='table'&&expandAll)applyExpandAll();
+  $('papers').innerHTML=mode==='table'?renderList(papers):papers.map(renderPaper).join('');
   document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
   const empty={all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked'};
   for(const [k,id] of Object.entries(empty)) $(id).classList.toggle('hidden',!!currentQuery||k!==view||papers.length!==0);
@@ -281,24 +281,18 @@ async function loadPapers(){
 }
 
 function replaceCard(card,paper){
-  if(card.classList.contains('row')){
-    const details=card.nextElementSibling,wasOpen=details?.classList.contains('row-details')&&!details.classList.contains('hidden');
-    if(details?.classList.contains('row-details'))details.remove();
-    card.outerHTML=renderRow(paper);
-    if(wasOpen){const t=$('papers').querySelector(`.row[data-id="${CSS.escape(paper.arxiv_id)}"] .row-toggle`);if(t)toggleRow(t);}
-  }else{
-    card.outerHTML=renderPaper(paper);
-  }
+  const aiOpen=card.querySelector('details.ai-summary')?.open;
+  card.outerHTML=layout()==='table'?renderListItem(paper):renderPaper(paper);
+  if(aiOpen){const d=$('papers').querySelector(`.paper[data-id="${CSS.escape(paper.arxiv_id)}"] details.ai-summary`);if(d)d.open=true;}
 }
 
 function removeCard(card,emptyId){
-  if(card.classList.contains('row')){const d=card.nextElementSibling;if(d?.classList.contains('row-details'))d.remove();}
   card.remove();
-  const left=$('papers').querySelector('.paper,.row');if(!left){$('papers').innerHTML='';if(!currentQuery)$(emptyId).classList.remove('hidden');}
+  const left=$('papers').querySelector('.paper');if(!left){$('papers').innerHTML='';if(!currentQuery)$(emptyId).classList.remove('hidden');}
 }
 
-function cardOf(el){return el.closest('.paper,.row-details');}
-function itemOf(el){const c=cardOf(el);return c?.classList.contains('row-details')?c.previousElementSibling:c;}
+function cardOf(el){return el.closest('.paper');}
+function itemOf(el){return cardOf(el);}
 
 /* ------------------------------------------------------------------ actions */
 
@@ -386,12 +380,6 @@ async function setLayout(mode){
   const resp=await postJSON('/api/settings/view-mode',{view_mode:mode});
   if(!resp.ok){toast('Could not change layout');return;}
   settings=await resp.json();await loadPapers();
-}
-
-function toggleRow(btn){
-  const row=btn.closest('.row'),details=row.nextElementSibling;
-  const open=details.classList.toggle('hidden');
-  btn.setAttribute('aria-expanded',String(!open));row.classList.toggle('open',!open);
 }
 
 function setView(view){
@@ -516,7 +504,6 @@ $('papers').addEventListener('click',e=>{
   let b;
   if((b=hit('.save-btn')))return toggleSaved(b);
   if((b=hit('.react-btn')))return setReaction(b);
-  if((b=hit('.row-toggle')))return toggleRow(b);
   if((b=hit('#expandAllBtn')))return toggleExpandAll();
   if((b=hit('.pdf-btn')))return downloadPdf(b);
   if((b=hit('.pdf-remove')))return removePdf(b);

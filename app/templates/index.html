@@ -32,6 +32,15 @@
       </div>
     </nav>
 
+    <section id="folderBar" class="folder-bar" aria-label="Folders">
+      <span class="tag-filter-label">Folders</span>
+      <div id="folderChips" class="chips folder-chips"></div>
+      <form id="newFolderForm" class="new-folder">
+        <input id="newFolderName" type="text" placeholder="New folder, e.g. PhD studium" maxlength="80" autocomplete="off">
+        <button type="submit" class="tool-btn">+ Add</button>
+      </form>
+    </section>
+
     <section id="tagFilter" class="tag-filter hidden" aria-label="Filter by tag">
       <span class="tag-filter-label">Tags</span>
       <div id="tagChips" class="chips tag-chips"></div>
@@ -87,6 +96,8 @@
     <div id="listBar" class="list-toolbar hidden">
       <span id="listInfo" class="muted"></span>
       <div class="list-toolbar-actions">
+        <button type="button" id="renameFolder" class="tool-btn hidden">Rename folder</button>
+        <button type="button" id="deleteFolder" class="tool-btn hidden">Delete folder</button>
         <button type="button" id="markAllRead" class="tool-btn hidden" title="Mark every paper in the inbox (with the current tag filter) as read"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M3 13l4 4L14 9M10 17l1 1 10-10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Mark all as read</span></button>
         <button type="button" id="expandAllBtn" class="tool-btn hidden">Expand all</button>
       </div>
@@ -103,6 +114,9 @@
     </section>
     <section id="emptyLiked" class="empty hidden">
       Nothing liked yet. Use the thumbs-up on a paper to record that it was useful.
+    </section>
+    <section id="emptyFolder" class="empty hidden">
+      This folder is empty. Use <strong>Folder</strong> on any paper to file it here.
     </section>
     <section id="emptyDisliked" class="empty hidden">
       Nothing marked as not interested yet. Use the thumbs-down on a paper to record it.

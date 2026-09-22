@@ -142,3 +142,42 @@ def test_paper_exists_ignores_version(tmp_path, monkeypatch):
     assert not db.paper_exists("2609.20823v1")
     assert not db.paper_exists("2609.2082v1")
     assert db.base_arxiv_id("hep-th/9901001v2") == "hep-th/9901001"
+
+
+def test_folders(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setenv("PAPER_SENTINEL_DATA", str(tmp_path))
+    import app.db as db
+    importlib.reload(db)
+    db.init_db()
+    for i in "abc":
+        db.insert_paper(_paper(i), {})
+    phd = db.create_folder("  PhD studium ")
+    sec = db.create_folder("Kyberbezpečnost")
+    assert phd["name"] == "PhD studium" and phd["count"] == 0
+    with pytest.raises(ValueError):
+        db.create_folder("phd STUDIUM")
+    with pytest.raises(ValueError):
+        db.create_folder("KYBERBEZPEČNOST")
+    with pytest.raises(ValueError):
+        db.create_folder("   ")
+
+    paper = db.set_paper_folders("a", [phd["id"], sec["id"], 999])
+    assert [f["name"] for f in paper["folders"]] == ["PhD studium", "Kyberbezpečnost"]
+    db.set_paper_folders("b", [sec["id"]])
+    assert {f["name"]: f["count"] for f in db.list_folders()} == {"PhD studium": 1, "Kyberbezpečnost": 2}
+    assert {p["arxiv_id"] for p in db.list_papers(view="folder", folder=sec["id"])} == {"a", "b"}
+    assert [p["arxiv_id"] for p in db.list_papers(view="inbox")] == ["c"]
+    assert db.counts()["inbox"] == 1
+    assert db.get_paper("c")["folders"] == []
+    assert [h["arxiv_id"] for h in db.search_text("T", folder=phd["id"])] == ["a"]
+
+    assert db.rename_folder(phd["id"], "Dizertace")["name"] == "Dizertace"
+    with pytest.raises(ValueError):
+        db.rename_folder(phd["id"], "kyberbezpečnost")
+    assert db.rename_folder(999, "x") is None
+    assert db.set_paper_folders("a", []) ["folders"] == []
+    assert db.counts()["inbox"] == 2
+    assert db.delete_folder(sec["id"]) and not db.delete_folder(sec["id"])
+    assert db.get_paper("b")["folders"] == []
+    assert db.set_paper_folders("missing", [phd["id"]]) is None

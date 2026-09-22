@@ -22,6 +22,8 @@ BASE_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init_db()
+    if db.get_state().get("scan_status") == "running":  # process was stopped mid-scan
+        db.set_state("scan_status", "idle")
     start_scheduler()
     try:
         yield
@@ -134,19 +136,72 @@ def _tag_list(tags: str | None) -> list[str]:
 
 @app.get("/api/papers")
 def papers(limit: int = Query(100, ge=1, le=500), saved: bool = False, view: str = "all", sort: str = "newest",
-           tags: str | None = Query(None, max_length=2000)):
+           tags: str | None = Query(None, max_length=2000), folder: int | None = None):
     if view not in db.VIEWS:
         raise HTTPException(status_code=400, detail=f"view must be one of {', '.join(db.VIEWS)}")
     if sort not in db.SORTS:
         raise HTTPException(status_code=400, detail=f"sort must be one of {', '.join(db.SORTS)}")
-    return db.list_papers(limit, saved_only=saved, view=view, sort=sort, tags=_tag_list(tags))
+    if view == "folder" and folder is None:
+        raise HTTPException(status_code=400, detail="folder id is required for the folder view")
+    return db.list_papers(limit, saved_only=saved, view=view, sort=sort, tags=_tag_list(tags), folder=folder)
 
 
 @app.get("/api/tag-counts")
-def tag_counts(view: str = "all"):
+def tag_counts(view: str = "all", folder: int | None = None):
     if view not in db.VIEWS:
         raise HTTPException(status_code=400, detail=f"view must be one of {', '.join(db.VIEWS)}")
-    return db.tag_counts(view)
+    return db.tag_counts(view, folder)
+
+
+# ---------------------------------------------------------------------------
+# Folders (projects)
+# ---------------------------------------------------------------------------
+
+class FolderPayload(BaseModel):
+    name: str
+
+
+class PaperFoldersPayload(BaseModel):
+    folder_ids: list[int] = []
+
+
+@app.get("/api/folders")
+def folders_list():
+    return {"folders": db.list_folders()}
+
+
+@app.post("/api/folders")
+def folders_create(payload: FolderPayload):
+    try:
+        return db.create_folder(payload.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/folders/{folder_id}")
+def folders_rename(folder_id: int, payload: FolderPayload):
+    try:
+        folder = db.rename_folder(folder_id, payload.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if folder is None:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return folder
+
+
+@app.delete("/api/folders/{folder_id}")
+def folders_delete(folder_id: int):
+    if not db.delete_folder(folder_id):
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"deleted": folder_id}
+
+
+@app.post("/api/papers/{arxiv_id}/folders")
+def paper_set_folders(arxiv_id: str, payload: PaperFoldersPayload):
+    paper = db.set_paper_folders(arxiv_id, payload.folder_ids[:100])
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return paper
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +231,7 @@ def _rrf(*lists: list[dict], k: int = 60) -> list[dict]:
 
 @app.get("/api/search")
 def search(q: str = Query("", max_length=500), mode: str = "hybrid", view: str = "all", limit: int = Query(50, ge=1, le=200),
-           tags: str | None = Query(None, max_length=2000)):
+           tags: str | None = Query(None, max_length=2000), folder: int | None = None):
     q = q.strip()
     tag_filter = _tag_list(tags)
     if not q:
@@ -186,14 +241,14 @@ def search(q: str = Query("", max_length=500), mode: str = "hybrid", view: str =
     if view not in db.VIEWS:
         raise HTTPException(status_code=400, detail=f"view must be one of {', '.join(db.VIEWS)}")
     settings = db.get_settings()
-    text_results = db.search_text(q, limit, view, tag_filter) if mode in ("text", "hybrid") else []
+    text_results = db.search_text(q, limit, view, tag_filter, folder) if mode in ("text", "hybrid") else []
     semantic_results: list[dict] = []
     semantic_available = False
     if mode in ("semantic", "hybrid"):
         vectors, model = embeddings.embed_texts(settings, [q])
         if vectors:
             semantic_available = True
-            semantic_results = db.rank_by_vector(vectors[0], limit, model=model, view=view, tags=tag_filter)
+            semantic_results = db.rank_by_vector(vectors[0], limit, model=model, view=view, tags=tag_filter, folder=folder)
     if mode == "text":
         results = text_results
     elif mode == "semantic":
@@ -345,6 +400,7 @@ def status():
     state["schedule"] = db.get_settings().get("interval_minutes", 360)
     state["counts"] = db.counts()
     state["saved_count"] = state["counts"]["saved"]
+    state["folders"] = db.list_folders()
     state["library"] = db.embedding_stats()
     state["llm"] = llm_health.probe(db.get_settings())
     return state

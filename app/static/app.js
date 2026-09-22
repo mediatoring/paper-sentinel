@@ -8,9 +8,13 @@ let knownTags = [];
 let activeTags = [];
 const expandedIds = new Set();
 try { activeTags=JSON.parse(localStorage.getItem('ps.tags')||'[]'); if(!Array.isArray(activeTags)) activeTags=[]; } catch { activeTags=[]; }
-const VIEWS=['inbox','saved','liked','disliked','all'];
+const VIEWS=['inbox','saved','liked','disliked','all','folder'];
+let currentFolder=null;
+let folders=[];
+try { const f=Number(localStorage.getItem('ps.folder')); if(f) currentFolder=f; } catch {}
 const LAYOUTS=['cards2','cards3','table'];
 try { const v=localStorage.getItem('ps.view'); if(VIEWS.includes(v)) currentView=v; } catch {}
+if(currentView==='folder'&&!currentFolder)currentView='inbox';
 try { const s=localStorage.getItem('ps.sort'); if(s==='score'||s==='newest') currentSort=s; } catch {}
 
 function toast(message){
@@ -143,6 +147,7 @@ const I={
   note:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13 7l4 4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   x:'<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
   chev:'<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   clock:'<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
 };
 const CHECK='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -172,7 +177,8 @@ function tagBadges(p){
   const user=(p.user_tags||[]).map(t=>`<span class="badge user" title="Your tag">${esc(t)}</span>`);
   const score=p.score!==null&&p.score!==undefined?`<span class="badge score tip" tabindex="0" data-tip="${esc(MATCH_TIP)}">match ${pct(p.score)}</span>`:'';
   const sim=p.similarity!==undefined?`<span class="badge score tip" tabindex="0" data-tip="${esc(SIM_TIP)}">${pct(p.similarity)}</span>`:'';
-  return matched.join('')+user.join('')+score+sim;
+  const fold=(p.folders||[]).map(f=>`<span class="badge folder" title="In folder">${I.folder} ${esc(f.name)}</span>`);
+  return matched.join('')+user.join('')+fold.join('')+score+sim;
 }
 
 function snippetBlock(p){
@@ -205,7 +211,9 @@ function toolsBlock(p){
     ${pdf}
     <button type="button" class="tool-btn similar-btn" data-id="${esc(p.arxiv_id)}" title="Find similar papers by meaning">${I.similar}<span>Similar</span></button>
     <button type="button" class="tool-btn notes-btn${p.notes||p.user_tags?.length?' has-notes':''}" data-id="${esc(p.arxiv_id)}" title="Your notes and tags">${I.note}<span>Notes${p.user_tags?.length?` (${p.user_tags.length})`:''}</span></button>
+    <button type="button" class="tool-btn folder-btn${p.folders?.length?' in-folder':''}" data-id="${esc(p.arxiv_id)}" title="File this paper into your folders / projects">${I.folder}<span>Folder${p.folders?.length?` (${p.folders.length})`:''}</span></button>
   </div>
+  <div class="panel folder-panel hidden"></div>
   <div class="panel similar-panel hidden"></div>
   <div class="panel notes-panel hidden">
     <label class="field">Notes<textarea class="notes-input" rows="4" placeholder="Why does this matter to you? What to check?">${esc(p.notes||'')}</textarea></label>
@@ -287,11 +295,12 @@ function renderList(papers){
 
 function updateListBar(papers){
   const mode=layout();
-  $('listBar').classList.toggle('hidden',papers.length===0);
+  $('listBar').classList.toggle('hidden',papers.length===0&&currentView!=='folder');
   $('listInfo').textContent=`${papers.length} paper${papers.length===1?'':'s'}${mode==='table'?' · click a title to collapse or expand':''}${currentView==='inbox'?' · any action moves a paper out of the inbox':''}`;
   const anyClosed=[...document.querySelectorAll('#papers .list-item')].some(c=>!c.classList.contains('open'));
   $('expandAllBtn').classList.toggle('hidden',mode!=='table');$('expandAllBtn').textContent=anyClosed?'Expand all':'Collapse all';
   $('markAllRead').classList.toggle('hidden',currentView!=='inbox'||!!currentQuery);
+  $('renameFolder').classList.toggle('hidden',currentView!=='folder');$('deleteFolder').classList.toggle('hidden',currentView!=='folder');
 }
 
 function toggleExpandAll(){
@@ -330,14 +339,14 @@ async function fetchList(){
   return fetch(`/api/papers?limit=200&view=${currentView}&sort=${currentSort}${tagParam()}`).then(r=>r.json());
 }
 
-function tagParam(){return activeTags.length?`&tags=${encodeURIComponent(activeTags.join(','))}`:'';}
+function tagParam(){return (activeTags.length?`&tags=${encodeURIComponent(activeTags.join(','))}`:'')+(currentView==='folder'&&currentFolder?`&folder=${currentFolder}`:'');}
 
 /* ------------------------------------------------------------------ tag filter chips */
 
 let tagCountsKey='';
 async function loadTagChips(force=false){
-  const key=currentView;
-  const data=await fetch(`/api/tag-counts?view=${key}`).then(r=>r.json()).catch(()=>null);
+  const key=currentView+(currentView==='folder'?`:${currentFolder}`:'');
+  const data=await fetch(`/api/tag-counts?view=${currentView}${currentView==='folder'&&currentFolder?`&folder=${currentFolder}`:''}`).then(r=>r.json()).catch(()=>null);
   if(!data)return;
   const sig=JSON.stringify([key,data]);
   if(!force&&sig===tagCountsKey)return;
@@ -386,7 +395,7 @@ async function loadPapers(force=false){
   const papers=await fetchList();
   const mode=layout();
   // Re-render only when something actually changed, so open abstracts and panels are not reset by the status poll.
-  const key=JSON.stringify([view,mode,currentQuery,currentSort,activeTags,papers.map(p=>[p.arxiv_id,p.saved,p.reaction,p.read_at,p.notes,p.user_tags,p.has_pdf,p.score,p.summary?.length])]);
+  const key=JSON.stringify([view,currentFolder,mode,currentQuery,currentSort,activeTags,papers.map(p=>[p.arxiv_id,p.saved,p.reaction,p.read_at,p.notes,p.user_tags,p.has_pdf,p.score,p.summary?.length,(p.folders||[]).map(f=>f.id)])]);
   if(!force&&key===lastRenderKey&&$('papers').children.length){return;}
   lastRenderKey=key;
   const st=openStates();
@@ -395,7 +404,7 @@ async function loadPapers(force=false){
   restoreOpenStates(st);
   updateListBar(papers);
   document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
-  const empty={inbox:'emptyInbox',all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked'};
+  const empty={inbox:'emptyInbox',all:'emptyState',saved:'emptySaved',liked:'emptyLiked',disliked:'emptyDisliked',folder:'emptyFolder'};
   for(const [k,id] of Object.entries(empty)) $(id).classList.toggle('hidden',!!currentQuery||activeTags.length>0||k!==view||papers.length!==0);
   if(activeTags.length&&!currentQuery&&!papers.length)$('papers').innerHTML=`<div class="empty">No papers tagged ${activeTags.map(t=>`<span class="badge">${esc(t)}</span>`).join(' ')} in this view.</div>`;
   if(view!=='inbox'||currentQuery||activeTags.length){return;}
@@ -504,6 +513,85 @@ async function showSimilar(btn){
   panel.innerHTML=`<div class="panel-title">Similar papers</div><ul class="similar-list">${data.results.map(r=>`<li><span class="badge score">${pct(r.similarity)}</span> <a href="${esc(r.abs_url)}" target="_blank" rel="noreferrer">${esc(r.title)}</a>${r.saved?` <span class="mini icon warn" title="Read later">${BOOKMARK}</span>`:''}${r.reaction==='like'?` <span class="mini icon ok" title="Liked">${THUMB_UP}</span>`:''}</li>`).join('')}</ul>`;
 }
 
+function renderFolderPanel(card,p){
+  const panel=card.querySelector('.folder-panel');
+  const mine=new Set((p.folders||[]).map(f=>f.id));
+  panel.innerHTML=`<div class="panel-title">Folders</div>
+    ${folders.length?`<div class="chips">${folders.map(f=>`<label class="chip"><input type="checkbox" name="pf_${esc(p.arxiv_id)}" value="${f.id}"${mine.has(f.id)?' checked':''}><span>${esc(f.name)}</span></label>`).join('')}</div>`:'<div class="muted">No folders yet. Create one below or in the Folders row at the top.</div>'}
+    <form class="new-folder inline"><input type="text" class="folder-new-name" placeholder="New folder…" maxlength="80"><button type="submit" class="tool-btn">+ Add</button></form>
+    <div class="panel-actions"><button type="button" class="folder-cancel">Cancel</button><button type="button" class="primary folder-save" data-id="${esc(p.arxiv_id)}">Save</button></div>`;
+}
+
+async function toggleFolderPanel(btn){
+  const card=cardOf(btn),panel=card.querySelector('.folder-panel');
+  if(!panel.classList.contains('hidden')){panel.classList.add('hidden');return;}
+  const paper=await fetchPaper(btn.dataset.id);
+  renderFolderPanel(card,paper||{arxiv_id:btn.dataset.id,folders:[]});
+  panel.classList.remove('hidden');
+}
+
+async function fetchPaper(id){
+  // no single-paper endpoint needed: folders are on the card's data attributes via the last render
+  const el=$('papers').querySelector(`.paper[data-id="${CSS.escape(id)}"]`);
+  const names=[...(el?.querySelectorAll('.badge.folder')||[])].map(b=>b.textContent.trim());
+  return {arxiv_id:id,folders:folders.filter(f=>names.includes(f.name))};
+}
+
+async function saveFolders(btn){
+  const id=btn.dataset.id,card=cardOf(btn),panel=card.querySelector('.folder-panel');
+  const ids=[...panel.querySelectorAll('input[type=checkbox]:checked')].map(i=>Number(i.value));
+  btn.disabled=true;
+  const resp=await postJSON(`/api/papers/${encodeURIComponent(id)}/folders`,{folder_ids:ids});
+  btn.disabled=false;
+  if(!resp.ok){toast('Could not save folders');return;}
+  const paper=await resp.json();
+  toast(ids.length?`Filed into ${ids.length} folder${ids.length===1?'':'s'}`:'Removed from folders');
+  await loadFolders();
+  if(currentView==='inbox'&&ids.length){bumpInbox(-1);removeCard(itemOf(btn),'emptyInbox');return;}
+  if(currentView==='folder'&&!ids.includes(currentFolder)){removeCard(itemOf(btn),'emptyFolder');return;}
+  replaceCard(itemOf(btn),paper);
+}
+
+async function createFolderFrom(input,after){
+  const name=input.value.trim();if(!name)return;
+  const resp=await postJSON('/api/folders',{name});
+  const data=await resp.json().catch(()=>({}));
+  if(!resp.ok){toast(data.detail||'Could not create folder');return;}
+  input.value='';toast(`Folder “${data.name}” created`);await loadFolders();if(after)after(data);
+}
+
+async function loadFolders(){
+  const data=await fetch('/api/folders').then(r=>r.json()).catch(()=>null);
+  if(!data)return;
+  folders=data.folders;renderFolderChips();
+}
+
+function renderFolderChips(){
+  $('folderChips').innerHTML=folders.map(f=>`<button type="button" class="tab folder-tab${currentView==='folder'&&currentFolder===f.id?' active':''}" data-folder="${f.id}">${I.folder} ${esc(f.name)} <span class="count">${f.count}</span></button>`).join('');
+  if(currentView==='folder'&&!folders.some(f=>f.id===currentFolder)){setView('inbox');}
+}
+
+function openFolder(id){
+  currentFolder=id;try{localStorage.setItem('ps.folder',String(id))}catch{}
+  setView('folder');
+}
+
+async function renameCurrentFolder(){
+  const f=folders.find(x=>x.id===currentFolder);if(!f)return;
+  const name=prompt('Rename folder',f.name);if(name===null||!name.trim()||name.trim()===f.name)return;
+  const resp=await postJSON(`/api/folders/${f.id}`,{name});const data=await resp.json().catch(()=>({}));
+  if(!resp.ok){toast(data.detail||'Could not rename');return;}
+  toast('Folder renamed');await loadFolders();lastRenderKey='';await loadPapers(true);
+}
+
+async function deleteCurrentFolder(){
+  const f=folders.find(x=>x.id===currentFolder);if(!f)return;
+  if(!confirm(`Delete folder “${f.name}”? The ${f.count} paper(s) in it are not deleted, they just leave the folder.`))return;
+  const resp=await postJSON(`/api/folders/${f.id}`,undefined,'DELETE');
+  if(!resp.ok){toast('Could not delete folder');return;}
+  toast('Folder deleted');currentFolder=null;await loadFolders();setView('inbox');
+}
+
 async function toggleNotes(btn){
   const card=cardOf(btn),panel=card.querySelector('.notes-panel');
   const open=panel.classList.toggle('hidden');
@@ -536,7 +624,8 @@ async function setLayout(mode){
 
 function setView(view){
   currentView=view;try{localStorage.setItem('ps.view',view)}catch{}lastRenderKey='';
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));
+  document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));
+  document.querySelectorAll('.folder-tab').forEach(t=>t.classList.toggle('active',view==='folder'&&Number(t.dataset.folder)===currentFolder));
   loadTagChips();loadPapers();
 }
 
@@ -625,7 +714,8 @@ async function loadStatus(){
   const s=await fetch('/api/status').then(r=>r.json());
   renderLlm(s.llm);
   const status=s.scan_status||'idle';
-  $('scanStatus').textContent=`Status: ${status}`;updateCounts(s.counts);$('scanStatus').className=status==='error'?'status-error':'';
+  $('scanStatus').textContent=`Status: ${status}`;updateCounts(s.counts);
+  if(s.folders&&JSON.stringify(s.folders)!==JSON.stringify(folders)){folders=s.folders;renderFolderChips();}$('scanStatus').className=status==='error'?'status-error':'';
   $('lastScan').textContent=`Last scan: ${s.last_scan?dateText(s.last_scan):'never'}`;
   if(s.library)$('libraryStat').textContent=`Library: ${s.library.embedded}/${s.library.total} embedded · ${s.library.pdfs} PDF${s.library.pdfs===1?'':'s'}`;
   const err=$('scanError');err.textContent=status==='error'&&s.last_error?`Last error: ${s.last_error}`:'';err.classList.toggle('hidden',!err.textContent);
@@ -659,6 +749,9 @@ $('papers').addEventListener('click',e=>{
   if((b=hit('.react-btn')))return setReaction(b);
   if((b=hit('.list-toggle')))return toggleListItem(b);
   if((b=hit('.read-btn')))return toggleRead(b);
+  if((b=hit('.folder-btn')))return toggleFolderPanel(b);
+  if((b=hit('.folder-save')))return saveFolders(b);
+  if((b=hit('.folder-cancel')))return cardOf(b).querySelector('.folder-panel').classList.add('hidden');
   if((b=hit('.pdf-btn')))return downloadPdf(b);
   if((b=hit('.pdf-remove')))return removePdf(b);
   if((b=hit('.similar-btn')))return showSimilar(b);
@@ -669,6 +762,10 @@ $('papers').addEventListener('click',e=>{
 document.querySelectorAll('.layout-btn').forEach(b=>b.addEventListener('click',()=>setLayout(b.dataset.layout)));
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setView(t.dataset.view)));
 document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===currentView));
+$('papers').addEventListener('submit',e=>{const f=e.target.closest('.new-folder.inline');if(!f)return;e.preventDefault();const card=cardOf(f);const checked=[...f.closest('.folder-panel').querySelectorAll('input[type=checkbox]:checked')].map(i=>Number(i.value));createFolderFrom(f.querySelector('input'),(nf)=>{renderFolderPanel(card,{arxiv_id:card.dataset.id,folders:folders.filter(x=>checked.includes(x.id)||x.id===nf.id)});card.querySelector('.folder-panel').classList.remove('hidden');});});
+$('folderChips').addEventListener('click',e=>{const t=e.target.closest('.folder-tab');if(t)openFolder(Number(t.dataset.folder));});
+$('newFolderForm').addEventListener('submit',e=>{e.preventDefault();createFolderFrom($('newFolderName'));});
+$('renameFolder').addEventListener('click',renameCurrentFolder);$('deleteFolder').addEventListener('click',deleteCurrentFolder);
 $('expandAllBtn').addEventListener('click',toggleExpandAll);$('markAllRead').addEventListener('click',markAllRead);
 $('tagChips').addEventListener('change',onTagChipChange);$('tagClear').addEventListener('click',clearTags);
 $('searchForm').addEventListener('submit',runSearch);
@@ -678,5 +775,5 @@ $('searchInput').addEventListener('keydown',e=>{if(e.key==='Escape')clearSearch(
 $('sortMode').value=currentSort;$('sortMode').addEventListener('change',e=>setSort(e.target.value));
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();$('searchInput').focus();}});
 
-(async()=>{await loadSettings();await loadTagChips(true);await loadPapers();await loadStatus();setInterval(loadStatus,5000);
+(async()=>{await loadSettings();await loadFolders();await loadTagChips(true);await loadPapers();await loadStatus();setInterval(loadStatus,5000);
   if(location.hash==='#settings'){$('settingsDialog').showModal();}})();

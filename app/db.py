@@ -85,6 +85,21 @@ def init_db() -> None:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS paper_folders (
+                arxiv_id TEXT NOT NULL REFERENCES papers(arxiv_id) ON DELETE CASCADE,
+                folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+                added_at TEXT NOT NULL,
+                PRIMARY KEY (arxiv_id, folder_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_paper_folders_folder ON paper_folders(folder_id);
             """
         )
         _migrate(conn)
@@ -229,12 +244,110 @@ PAPER_COLUMNS = "papers.*"
 def get_paper(arxiv_id: str) -> dict[str, Any] | None:
     with connect() as conn:
         row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
-    return _paper_row_to_dict(row) if row else None
+    return attach_folders([_paper_row_to_dict(row)])[0] if row else None
+
+
+# ---------------------------------------------------------------------------
+# Folders (projects): a paper can live in several folders
+# ---------------------------------------------------------------------------
+
+def attach_folders(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not papers:
+        return papers
+    ids = [p["arxiv_id"] for p in papers]
+    by_id: dict[str, list[dict[str, Any]]] = {i: [] for i in ids}
+    with connect() as conn:
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            rows = conn.execute(
+                f"""
+                SELECT pf.arxiv_id, f.id, f.name FROM paper_folders pf JOIN folders f ON f.id = pf.folder_id
+                WHERE pf.arxiv_id IN ({','.join('?' * len(chunk))}) ORDER BY f.position, f.name COLLATE NOCASE
+                """,
+                chunk,
+            ).fetchall()
+            for r in rows:
+                by_id[r["arxiv_id"]].append({"id": r["id"], "name": r["name"]})
+    for p in papers:
+        p["folders"] = by_id.get(p["arxiv_id"], [])
+    return papers
+
+
+def list_folders() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT f.id, f.name, f.position, f.created_at,
+                   (SELECT COUNT(*) FROM paper_folders pf WHERE pf.folder_id = f.id) AS count
+            FROM folders f ORDER BY f.position, f.name COLLATE NOCASE
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _clean_folder_name(name: str) -> str:
+    name = re.sub(r"\s+", " ", str(name or "")).strip()
+    if not name:
+        raise ValueError("Folder name must not be empty.")
+    return name[:80]
+
+
+def _folder_name_taken(conn: sqlite3.Connection, name: str, except_id: int | None = None) -> bool:
+    # SQLite's NOCASE only folds ASCII, so compare with Python casefold (Složka == složka == SLOŽKA).
+    key = name.casefold()
+    for row in conn.execute("SELECT id, name FROM folders").fetchall():
+        if row["name"].casefold() == key and row["id"] != except_id:
+            return True
+    return False
+
+
+def create_folder(name: str) -> dict[str, Any]:
+    name = _clean_folder_name(name)
+    with connect() as conn:
+        if _folder_name_taken(conn, name):
+            raise ValueError(f"Folder “{name}” already exists.")
+        pos = conn.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM folders").fetchone()[0]
+        cur = conn.execute("INSERT INTO folders (name, position, created_at) VALUES (?, ?, ?)", (name, pos, _now()))
+        fid = cur.lastrowid
+    return next(f for f in list_folders() if f["id"] == fid)
+
+
+def rename_folder(folder_id: int, name: str) -> dict[str, Any] | None:
+    name = _clean_folder_name(name)
+    with connect() as conn:
+        if _folder_name_taken(conn, name, except_id=folder_id):
+            raise ValueError(f"Folder “{name}” already exists.")
+        cur = conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
+        if cur.rowcount == 0:
+            return None
+    return next((f for f in list_folders() if f["id"] == folder_id), None)
+
+
+def delete_folder(folder_id: int) -> bool:
+    with connect() as conn:
+        conn.execute("DELETE FROM paper_folders WHERE folder_id = ?", (folder_id,))
+        cur = conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+        return cur.rowcount > 0
+
+
+def set_paper_folders(arxiv_id: str, folder_ids: list[int]) -> dict[str, Any] | None:
+    with connect() as conn:
+        if not conn.execute("SELECT 1 FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone():
+            return None
+        valid = {r["id"] for r in conn.execute("SELECT id FROM folders").fetchall()}
+        wanted = {int(f) for f in folder_ids if int(f) in valid}
+        current = {r["folder_id"] for r in conn.execute("SELECT folder_id FROM paper_folders WHERE arxiv_id = ?", (arxiv_id,)).fetchall()}
+        for fid in current - wanted:
+            conn.execute("DELETE FROM paper_folders WHERE arxiv_id = ? AND folder_id = ?", (arxiv_id, fid))
+        for fid in wanted - current:
+            conn.execute("INSERT INTO paper_folders (arxiv_id, folder_id, added_at) VALUES (?, ?, ?)", (arxiv_id, fid, _now()))
+    return get_paper(arxiv_id)
 
 
 REACTIONS = ("like", "dislike")
 VIEWS = {
-    "inbox": ("WHERE reaction IS NULL AND saved = 0 AND read_at IS NULL", "COALESCE(published, created_at) DESC"),
+    "inbox": ("WHERE reaction IS NULL AND saved = 0 AND read_at IS NULL AND NOT EXISTS (SELECT 1 FROM paper_folders pf WHERE pf.arxiv_id = papers.arxiv_id)", "COALESCE(published, created_at) DESC"),
+    "folder": ("", "COALESCE(published, created_at) DESC"),
     "all": ("", "COALESCE(published, created_at) DESC"),
     "saved": ("WHERE saved = 1", "saved_at DESC"),
     "liked": ("WHERE reaction = 'like'", "reacted_at DESC"),
@@ -245,13 +358,16 @@ VIEWS = {
 SORTS = {"newest": None, "score": "score DESC NULLS LAST, COALESCE(published, created_at) DESC"}
 
 
-def _filters(view: str, tags: list[str] | None) -> tuple[list[str], list[Any]]:
-    """SQL clauses (without WHERE/AND) and params for a view plus an optional any-of tag filter."""
+def _filters(view: str, tags: list[str] | None, folder: int | None = None) -> tuple[list[str], list[Any]]:
+    """SQL clauses (without WHERE/AND) and params for a view plus optional tag / folder filters."""
     clauses: list[str] = []
     params: list[Any] = []
     where, _ = VIEWS.get(view, VIEWS["all"])
     if where:
-        clauses.append(where.replace("WHERE ", ""))
+        clauses.append(where.replace("WHERE ", "", 1))
+    if folder is not None:
+        clauses.append("EXISTS (SELECT 1 FROM paper_folders pf WHERE pf.arxiv_id = papers.arxiv_id AND pf.folder_id = ?)")
+        params.append(int(folder))
     wanted = [t.strip().lower() for t in (tags or []) if t and t.strip()]
     if wanted:
         marks = ",".join("?" * len(wanted))
@@ -265,25 +381,28 @@ def _filters(view: str, tags: list[str] | None) -> tuple[list[str], list[Any]]:
 
 
 def list_papers(limit: int = 100, saved_only: bool = False, view: str = "all", sort: str = "newest",
-                tags: list[str] | None = None) -> list[dict[str, Any]]:
+                tags: list[str] | None = None, folder: int | None = None) -> list[dict[str, Any]]:
     if saved_only:
         view = "saved"
     _, order = VIEWS.get(view, VIEWS["all"])
+    if view == "folder" and folder is not None and sort == "newest":
+        order = "(SELECT added_at FROM paper_folders pf WHERE pf.arxiv_id = papers.arxiv_id AND pf.folder_id = ?) DESC"
     if SORTS.get(sort):
         order = SORTS[sort]
-    clauses, params = _filters(view, tags)
+    clauses, params = _filters(view, tags, folder)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    order_params = (int(folder),) if "pf.folder_id = ?) DESC" in order else ()
     with connect() as conn:
         rows = conn.execute(
             f"SELECT * FROM papers {where} ORDER BY {order} LIMIT ?",
-            (*params, limit),
+            (*params, *order_params, limit),
         ).fetchall()
-    return [_paper_row_to_dict(r) for r in rows]
+    return attach_folders([_paper_row_to_dict(r) for r in rows])
 
 
-def tag_counts(view: str = "all") -> dict[str, list[dict[str, Any]]]:
+def tag_counts(view: str = "all", folder: int | None = None) -> dict[str, list[dict[str, Any]]]:
     """Tags in use with paper counts, split into radar (matched) tags and your own tags."""
-    clauses, params = _filters(view, None)
+    clauses, params = _filters(view, None, folder)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     out: dict[str, list[dict[str, Any]]] = {}
     with connect() as conn:
@@ -311,7 +430,7 @@ def set_reaction(arxiv_id: str, reaction: str | None) -> dict[str, Any] | None:
         if cur.rowcount == 0:
             return None
         row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
-    return _paper_row_to_dict(row)
+    return attach_folders([_paper_row_to_dict(row)])[0]
 
 
 def counts() -> dict[str, int]:
@@ -322,7 +441,7 @@ def counts() -> dict[str, int]:
                    SUM(saved = 1) AS saved,
                    SUM(reaction = 'like') AS liked,
                    SUM(reaction = 'dislike') AS disliked,
-                   SUM(reaction IS NULL AND saved = 0 AND read_at IS NULL) AS inbox,
+                   SUM(reaction IS NULL AND saved = 0 AND read_at IS NULL AND NOT EXISTS (SELECT 1 FROM paper_folders pf WHERE pf.arxiv_id = papers.arxiv_id)) AS inbox,
                    SUM(read_at IS NOT NULL) AS read
             FROM papers
             """
@@ -339,7 +458,7 @@ def set_saved(arxiv_id: str, saved: bool) -> dict[str, Any] | None:
         if cur.rowcount == 0:
             return None
         row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
-    return _paper_row_to_dict(row)
+    return attach_folders([_paper_row_to_dict(row)])[0]
 
 
 def count_saved() -> int:
@@ -355,7 +474,7 @@ def set_read(arxiv_id: str, read: bool) -> dict[str, Any] | None:
         if cur.rowcount == 0:
             return None
         row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
-    return _paper_row_to_dict(row)
+    return attach_folders([_paper_row_to_dict(row)])[0]
 
 
 def mark_all_read(tags: list[str] | None = None) -> int:
@@ -408,7 +527,7 @@ def set_notes(arxiv_id: str, notes: str, user_tags: list[str]) -> dict[str, Any]
             return None
         _reindex(conn, arxiv_id)
         row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
-    return _paper_row_to_dict(row)
+    return attach_folders([_paper_row_to_dict(row)])[0]
 
 
 def all_user_tags() -> list[str]:
@@ -435,7 +554,7 @@ def set_pdf(arxiv_id: str, path: str | None, size: int | None, text: str | None)
             return None
         _reindex(conn, arxiv_id)
         row = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,)).fetchone()
-    return _paper_row_to_dict(row)
+    return attach_folders([_paper_row_to_dict(row)])[0]
 
 
 def get_pdf_path(arxiv_id: str) -> str | None:
@@ -461,11 +580,12 @@ def fts_query(text: str) -> str:
     return " AND ".join(parts)
 
 
-def search_text(query: str, limit: int = 50, view: str = "all", tags: list[str] | None = None) -> list[dict[str, Any]]:
+def search_text(query: str, limit: int = 50, view: str = "all", tags: list[str] | None = None,
+                folder: int | None = None) -> list[dict[str, Any]]:
     q = fts_query(query)
     if not q:
         return []
-    clauses, params = _filters(view, tags)
+    clauses, params = _filters(view, tags, folder)
     extra = "".join(f" AND {c}" for c in clauses)
     with connect() as conn:
         rows = conn.execute(
@@ -483,7 +603,7 @@ def search_text(query: str, limit: int = 50, view: str = "all", tags: list[str] 
         d = _paper_row_to_dict(r)
         d["text_rank"] = float(r["rank"])
         out.append(d)
-    return out
+    return attach_folders(out)
 
 
 # ---------------------------------------------------------------------------
@@ -555,17 +675,18 @@ def embedding_stats() -> dict[str, Any]:
 
 
 def rank_by_vector(vec: list[float], limit: int = 20, exclude: str | None = None,
-                   model: str | None = None, view: str = "all", tags: list[str] | None = None) -> list[dict[str, Any]]:
+                   model: str | None = None, view: str = "all", tags: list[str] | None = None,
+                   folder: int | None = None) -> list[dict[str, Any]]:
     scored = []
     for arxiv_id, emb in all_embeddings(model):
         if arxiv_id == exclude:
             continue
         scored.append((cosine(vec, emb), arxiv_id))
     scored.sort(reverse=True)
-    ids = [a for _, a in scored[: max(limit * 3, limit) if not tags else len(scored)]]
+    ids = [a for _, a in scored[: max(limit * 3, limit) if not (tags or folder is not None) else len(scored)]]
     if not ids:
         return []
-    clauses, params = _filters(view, tags)
+    clauses, params = _filters(view, tags, folder)
     extra = "".join(f" AND {c}" for c in clauses)
     with connect() as conn:
         rows = conn.execute(
@@ -580,7 +701,7 @@ def rank_by_vector(vec: list[float], limit: int = 20, exclude: str | None = None
             out.append(d)
             if len(out) >= limit:
                 break
-    return out
+    return attach_folders(out)
 
 
 def preference_examples(limit: int = 10) -> dict[str, list[dict[str, str]]]:

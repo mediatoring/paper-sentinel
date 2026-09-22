@@ -163,3 +163,19 @@ details.abstract p{margin:8px 0 0;color:#333}
 .paper p code,.ai-summary code,.notes-preview code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:#f1f1ec;padding:1px 5px;border-radius:4px}
 .topbar .credit{color:#c9c9ff;text-decoration:none;border-bottom:1px solid #6b6bb3;display:inline-flex;align-items:center;gap:4px}
 .topbar .credit:hover{color:#fff;border-bottom-color:#fff}
+
+.folder-bar{display:flex;align-items:center;gap:10px;padding:12px 0 0;flex-wrap:wrap}
+.folder-chips{flex:1 1 auto;gap:6px}
+.folder-tab{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-size:13px}
+.folder-tab svg{opacity:.7}
+.folder-tab.active svg{opacity:1}
+.folder-tab .count{background:#7656ff}
+.new-folder{display:flex;gap:6px;align-items:center}
+.new-folder input{padding:7px 10px;font-size:13px;min-width:200px}
+.new-folder.inline{margin-top:10px}
+.new-folder.inline input{flex:1 1 auto}
+.badge.folder{background:#eef7ff;color:#1d4f8a;display:inline-flex;align-items:center;gap:3px}
+.badge.folder svg{width:12px;height:12px}
+.tool-btn.in-folder{background:#eef7ff;border-color:#8fbdf0;color:#1d4f8a}
+.folder-panel .chips{margin-bottom:4px}
+@media(max-width:760px){.folder-bar{align-items:stretch}.new-folder input{min-width:0;flex:1}}

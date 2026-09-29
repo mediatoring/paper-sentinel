@@ -13,8 +13,13 @@ import httpx
 
 log = logging.getLogger(__name__)
 
+
+class FetchError(RuntimeError):
+    """arXiv could not be reached or returned nothing; worth retrying soon."""
+
 ARXIV_API = "https://export.arxiv.org/api/query"
 ARXIV_RSS = "https://rss.arxiv.org/atom/{categories}"
+ARXIV_RSS2 = "https://rss.arxiv.org/rss/{categories}"
 USER_AGENT = "PaperSentinel/0.1 (open-source research radar; +https://github.com/mediatoring/paper-sentinel)"
 HEADERS = {"User-Agent": USER_AGENT, "Accept": "application/atom+xml, application/xml, text/xml, */*"}
 
@@ -76,7 +81,7 @@ def _get(url: str, params: dict[str, Any] | None = None) -> httpx.Response:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         _throttle()
         try:
-            with httpx.Client(timeout=30.0, headers=HEADERS, follow_redirects=True) as client:
+            with httpx.Client(timeout=httpx.Timeout(60.0, connect=15.0), headers=HEADERS, follow_redirects=True) as client:
                 response = client.get(url, params=params)
             if response.status_code in RETRY_STATUSES:
                 retry_after = response.headers.get("Retry-After")
@@ -95,7 +100,7 @@ def _get(url: str, params: dict[str, Any] | None = None) -> httpx.Response:
             last_error = exc
             log.warning("arXiv request failed on attempt %d/%d: %s", attempt, MAX_ATTEMPTS, exc)
             time.sleep(3.0 * (2 ** (attempt - 1)))
-    raise RuntimeError(f"arXiv request failed after {MAX_ATTEMPTS} attempts: {last_error}")
+    raise FetchError(f"arXiv request failed after {MAX_ATTEMPTS} attempts: {last_error}")
 
 
 def _arxiv_id_from(entry: Any) -> str:
@@ -164,13 +169,23 @@ def fetch_latest(categories: list[str], max_results: int = 100) -> list[dict[str
         return parse_feed(_get(ARXIV_API, params).text)
     except Exception as api_error:
         log.warning("arXiv API unavailable (%s); falling back to rss.arxiv.org", api_error)
-        try:
-            papers = parse_feed(_get(ARXIV_RSS.format(categories="+".join(categories))).text)
-        except Exception as rss_error:
-            raise RuntimeError(f"arXiv API: {api_error}; RSS fallback: {rss_error}") from rss_error
-        if not papers:
-            raise RuntimeError(
-                f"arXiv API is rate limiting this client ({api_error}); the RSS fallback has no new "
-                "announcements right now (arXiv publishes on weekdays only). Try again later."
-            ) from api_error
-        return papers[:max_results]
+        joined = "+".join(categories)
+        rss_error: Exception | None = None
+        papers: list[dict[str, Any]] = []
+        for url in (ARXIV_RSS.format(categories=joined), ARXIV_RSS2.format(categories=joined)):
+            try:
+                papers = parse_feed(_get(url).text)
+            except Exception as exc:
+                rss_error = exc
+                continue
+            if papers:
+                break
+        if papers:
+            return papers[:max_results]
+        if rss_error is not None and not papers:
+            raise FetchError(f"arXiv API: {api_error}; RSS fallback: {rss_error}") from rss_error
+        raise FetchError(
+            f"arXiv API did not respond ({api_error}) and today's RSS feed is empty. "
+            "arXiv announces new papers on weekdays only, so this is expected on weekends; "
+            "otherwise arXiv is having a bad moment. The scan will retry automatically."
+        ) from api_error

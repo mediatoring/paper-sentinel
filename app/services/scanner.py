@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app import db
-from app.services.arxiv import fetch_latest
+from app.services.arxiv import FetchError, fetch_latest
 from app.services.embeddings import embed_paper
 from app.services.llm import analyze_paper
 from app.services.matcher import match_paper
@@ -59,6 +59,7 @@ def scan_once() -> dict[str, Any]:
         log.error("Scan failed: %s", exc)
         db.set_state("scan_status", "error")
         db.set_state("last_error", str(exc))
-        return {"status": "error", "error": str(exc), "new": 0, "matched": 0, "scanned": 0}
+        return {"status": "error", "error": str(exc), "retryable": isinstance(exc, FetchError),
+                "new": 0, "matched": 0, "scanned": 0}
     finally:
         _lock.release()

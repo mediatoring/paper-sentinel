@@ -12,9 +12,8 @@ from pydantic import BaseModel
 
 from app import db
 from app.config import ARXIV_CATEGORIES, LEGACY_VIEW_MODES, SUGGESTED_TAGS, VIEW_MODES, normalize_categories
-from app.scheduler import reschedule, start as start_scheduler, stop as stop_scheduler
+from app.scheduler import reschedule, run_scan, start as start_scheduler, stop as stop_scheduler
 from app.services import embeddings, library, llm_health
-from app.services.scanner import scan_once
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -450,7 +449,7 @@ def llm_load(payload: LoadPayload, background_tasks: BackgroundTasks):
 def scan(background_tasks: BackgroundTasks):
     if db.get_state().get("scan_status") == "running":
         return {"status": "busy"}
-    background_tasks.add_task(scan_once)
+    background_tasks.add_task(run_scan)
     return {"status": "started"}
 
 

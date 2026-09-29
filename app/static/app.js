@@ -718,7 +718,9 @@ async function loadStatus(){
   if(s.folders&&JSON.stringify(s.folders)!==JSON.stringify(folders)){folders=s.folders;renderFolderChips();}$('scanStatus').className=status==='error'?'status-error':'';
   $('lastScan').textContent=`Last scan: ${s.last_scan?dateText(s.last_scan):'never'}`;
   if(s.library)$('libraryStat').textContent=`Library: ${s.library.embedded}/${s.library.total} embedded · ${s.library.pdfs} PDF${s.library.pdfs===1?'':'s'}`;
-  const err=$('scanError');err.textContent=status==='error'&&s.last_error?`Last error: ${s.last_error}`:'';err.classList.toggle('hidden',!err.textContent);
+  const err=$('scanError');
+  const retry=s.next_retry&&new Date(s.next_retry)>new Date()?` Automatic retry at ${dateText(s.next_retry).split(', ')[1]||dateText(s.next_retry)}.`:'';
+  err.textContent=status==='error'&&s.last_error?`Last error: ${s.last_error}${retry}`:'';err.classList.toggle('hidden',!err.textContent);
   $('scanBtn').disabled=status==='running';
   if(status!=='running'&&currentView==='inbox'&&!currentQuery&&!document.querySelector('.notes-panel:not(.hidden)')&&!document.querySelector('.paper.leaving')) await loadPapers();
   loadTagChips();
